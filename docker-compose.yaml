@@ -3,8 +3,18 @@ services:
     build: .
     runtime: nvidia
     environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      # Keep provider envs explicit for SceneSmith config.
+      - SCENESMITH_VLM_API_KEY=${SCENESMITH_VLM_API_KEY:-}
+      - SCENESMITH_VLM_BASE_URL=${SCENESMITH_VLM_BASE_URL:-https://api.openai.com/v1}
+      - SCENESMITH_IMAGE_API_KEY=${SCENESMITH_IMAGE_API_KEY:-}
+      - SCENESMITH_IMAGE_BASE_URL=${SCENESMITH_IMAGE_BASE_URL:-https://api.openai.com/v1}
+      - SCENESMITH_GEMINI_API_KEY=${SCENESMITH_GEMINI_API_KEY:-}
+      - SCENESMITH_GEMINI_BASE_URL=${SCENESMITH_GEMINI_BASE_URL:-https://generativelanguage.googleapis.com/v1beta}
+      - SCENESMITH_GEMINI_IMAGE_MODEL=${SCENESMITH_GEMINI_IMAGE_MODEL:-gemini-3-pro-image-preview}
+      # Bridge variables expected by some SDK paths.
+      - OPENAI_API_KEY=${SCENESMITH_VLM_API_KEY:-}
+      - OPENAI_BASE_URL=${SCENESMITH_VLM_BASE_URL:-https://api.openai.com/v1}
+      - GOOGLE_API_KEY=${SCENESMITH_GEMINI_API_KEY:-}
       - OPENAI_TRACING_KEY=${OPENAI_TRACING_KEY:-}
       - NVIDIA_VISIBLE_DEVICES=all
     volumes:
