@@ -136,7 +136,7 @@ def create_plant_from_dmd(
         parser.package_map().Add("scene", str(scene_dir))
 
     # Load and process directives using Drake's native machinery.
-    directives = LoadModelDirectives(directive_path)
+    directives = LoadModelDirectives(str(directive_path))
     ProcessModelDirectives(directives, parser)
 
     plant.Finalize()

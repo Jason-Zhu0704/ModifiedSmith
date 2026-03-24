@@ -114,22 +114,66 @@ class MaterialsResolver:
         Returns:
             Material if found, None otherwise.
         """
+        normalized_id = material_id.strip()
+        if not normalized_id:
+            return None
+
         # First check server cache.
-        if material_id in self._server_materials_cache:
+        if normalized_id in self._server_materials_cache:
             return Material(
-                path=self._server_materials_cache[material_id],
-                material_id=material_id,
+                path=self._server_materials_cache[normalized_id],
+                material_id=normalized_id,
             )
 
         # Then check local materials directory.
         self._discover_materials()
 
-        if material_id in self._available_materials:
+        if normalized_id in self._available_materials:
             # Local materials use folder name as ID.
-            return Material.from_path(self._available_materials[material_id])
+            return Material.from_path(self._available_materials[normalized_id])
 
-        console_logger.warning(f"Material not found: {material_id}")
+        # Case-insensitive fallback.
+        lower_to_name = {
+            name.lower(): name for name in self._available_materials.keys()
+        }
+        matched_name = lower_to_name.get(normalized_id.lower())
+        if matched_name:
+            return Material.from_path(self._available_materials[matched_name])
+
+        # Robust fallback for default IDs when exact match is unavailable.
+        fallback = self._fallback_default_material(normalized_id)
+        if fallback is not None:
+            console_logger.warning(
+                f"Material '{normalized_id}' not found; using fallback "
+                f"'{fallback.material_id}'."
+            )
+            return fallback
+
+        console_logger.warning(f"Material not found: {normalized_id}")
         return None
+
+    def _fallback_default_material(self, material_id: str) -> Material | None:
+        """Best-effort fallback for missing default material IDs."""
+        if not self._available_materials:
+            return None
+
+        requested = material_id.lower()
+        names = list(self._available_materials.keys())
+
+        # Prefer semantically similar material folders.
+        preferred_keywords: list[str] = []
+        if "wood" in requested or "floor" in requested:
+            preferred_keywords = ["wood", "parquet", "floor", "tile"]
+        elif "plaster" in requested or "wall" in requested or "stucco" in requested:
+            preferred_keywords = ["plaster", "stucco", "paint", "wall", "brick"]
+
+        for keyword in preferred_keywords:
+            for name in names:
+                if keyword in name.lower():
+                    return Material.from_path(self._available_materials[name])
+
+        # Last resort: pick first available material for resilience.
+        return Material.from_path(self._available_materials[names[0]])
 
     def _discover_materials(self) -> None:
         """Discover available materials in materials directory."""

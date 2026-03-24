@@ -77,6 +77,50 @@ STAGE_ASSET_DIRS = {
 }
 
 
+def _count_glb_files_up_to(root: Path, limit: int) -> int:
+    """Count *.glb files up to `limit` for quick dataset readiness checks."""
+    count = 0
+    for _ in root.rglob("*.glb"):
+        count += 1
+        if count >= limit:
+            return count
+    return count
+
+
+def _validate_hssd_dataset_ready(
+    hssd_data_path: Path,
+    hssd_preprocessed_path: Path,
+    min_object_meshes: int = 5000,
+) -> None:
+    """Validate HSSD data exists and appears sufficiently populated."""
+    if not hssd_data_path.exists():
+        raise FileNotFoundError(
+            f"HSSD data path missing: {hssd_data_path}. "
+            "Please download `data/hssd-models` first."
+        )
+    if not hssd_preprocessed_path.exists():
+        raise FileNotFoundError(
+            f"HSSD preprocessed path missing: {hssd_preprocessed_path}. "
+            "Please run scripts/download_hssd_data.sh first."
+        )
+
+    objects_dir = hssd_data_path / "objects"
+    if not objects_dir.exists():
+        raise FileNotFoundError(
+            f"HSSD objects directory missing: {objects_dir}. "
+            "The main HSSD models are not downloaded yet."
+        )
+
+    found = _count_glb_files_up_to(objects_dir, min_object_meshes)
+    if found < min_object_meshes:
+        raise RuntimeError(
+            "HSSD objects appear incomplete: "
+            f"found only {found} .glb files under {objects_dir}. "
+            "Please finish downloading `hssd/hssd-models` before running "
+            "furniture/wall/ceiling/manipuland stages."
+        )
+
+
 def _get_retrieval_gpu_device() -> str | None:
     """Get GPU device for retrieval servers.
 
@@ -1439,6 +1483,15 @@ class IndoorSceneGenerationExperiment(BaseExperiment):
 
     def _start_hssd_server(self) -> None:
         """Start HSSD retrieval server (if general_asset_source == 'hssd')."""
+        # Skip for floor-plan-only runs (no asset retrieval needed).
+        start_stage = self.cfg.experiment.pipeline.start_stage
+        stop_stage = self.cfg.experiment.pipeline.stop_stage
+        if (
+            start_stage == "floor_plan"
+            and stop_stage == "floor_plan"
+        ):
+            return
+
         # Only start if at least one agent uses HSSD strategy.
         furniture_uses_hssd = (
             self.cfg.furniture_agent.asset_manager.general_asset_source == "hssd"
@@ -1465,6 +1518,13 @@ class IndoorSceneGenerationExperiment(BaseExperiment):
         server_config = self.cfg.experiment.hssd_retrieval_server
         # Get HSSD data configuration from asset manager config.
         hssd_config = self.cfg.furniture_agent.asset_manager.hssd
+        hssd_data_path = Path(str(hssd_config.data_path))
+        hssd_preprocessed_path = Path(str(hssd_config.preprocessed_path))
+
+        _validate_hssd_dataset_ready(
+            hssd_data_path=hssd_data_path,
+            hssd_preprocessed_path=hssd_preprocessed_path,
+        )
 
         retrieval_device = _get_retrieval_gpu_device()
         console_logger.info(
@@ -1477,8 +1537,8 @@ class IndoorSceneGenerationExperiment(BaseExperiment):
             host=server_config.host,
             port=server_config.port,
             preload_retriever=True,  # Always preload CLIP for consistent performance.
-            hssd_data_path=str(hssd_config.data_path),
-            hssd_preprocessed_path=str(hssd_config.preprocessed_path),
+            hssd_data_path=str(hssd_data_path),
+            hssd_preprocessed_path=str(hssd_preprocessed_path),
             hssd_top_k=hssd_config.use_top_k,
             clip_device=retrieval_device,
         )
