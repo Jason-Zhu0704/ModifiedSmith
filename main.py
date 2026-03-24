@@ -27,6 +27,21 @@ from scenesmith.utils.print_utils import cyan
 console_logger = logging.getLogger(__name__)
 
 
+def _bridge_openai_envs() -> None:
+    """Bridge SceneSmith VLM env vars to OpenAI SDK env vars when missing."""
+    if not os.environ.get("OPENAI_API_KEY"):
+        vlm_key = os.environ.get("SCENESMITH_VLM_API_KEY")
+        if vlm_key:
+            os.environ["OPENAI_API_KEY"] = vlm_key
+            console_logger.info("Bridged SCENESMITH_VLM_API_KEY -> OPENAI_API_KEY")
+
+    if not os.environ.get("OPENAI_BASE_URL"):
+        vlm_base_url = os.environ.get("SCENESMITH_VLM_BASE_URL")
+        if vlm_base_url:
+            os.environ["OPENAI_BASE_URL"] = vlm_base_url
+            console_logger.info("Bridged SCENESMITH_VLM_BASE_URL -> OPENAI_BASE_URL")
+
+
 def run_local(cfg: DictConfig):
     # Delay some imports in case they are not needed in non-local envs for submission.
     from scenesmith.experiments import build_experiment
@@ -113,6 +128,8 @@ def run(cfg: DictConfig):
         level=getattr(logging, log_level, logging.INFO),
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
+
+    _bridge_openai_envs()
 
     # Configure separate tracing API key if provided.
     tracing_api_key = os.environ.get("OPENAI_TRACING_KEY")

@@ -1,5 +1,6 @@
 import base64
 import logging
+import mimetypes
 import os
 import time
 
@@ -8,11 +9,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import Enum
 from pathlib import Path
 
-from google import genai
-from google.genai import types
 from omegaconf import DictConfig
 from openai import OpenAI
 from PIL import Image
+import requests
 
 from scenesmith.prompts import PROMPTS_DATA_DIR
 from scenesmith.prompts.manager import PromptManager
@@ -20,7 +20,7 @@ from scenesmith.prompts.registry import ImageGenerationPrompts
 from scenesmith.utils.runtime_tracking import track_runtime
 from scenesmith.utils.service_config import (
     build_openai_client,
-    resolve_gemini_api_key,
+    resolve_gemini_connection,
     resolve_openai_connection,
 )
 
@@ -362,7 +362,7 @@ class OpenAIImageGenerator(BaseImageGenerator):
 
 
 class GeminiImageGenerator(BaseImageGenerator):
-    """Image generation using Google Gemini (gemini-3-pro-image-preview)."""
+    """Image generation using Gemini REST endpoint (official or third-party)."""
 
     def __init__(
         self,
@@ -377,22 +377,74 @@ class GeminiImageGenerator(BaseImageGenerator):
             image_size: Output image size ("1K", "2K", "4K").
 
         Raises:
-            ValueError: If GOOGLE_API_KEY environment variable is not set.
+            ValueError: If Gemini API key environment variable is not set.
         """
-        gemini_api_key, api_key_env = resolve_gemini_api_key(
+        conn = resolve_gemini_connection(
             service_cfg=service_cfg, section="image_generation"
         )
-        if not gemini_api_key:
+        if not conn["api_key"]:
             raise ValueError(
-                f"{api_key_env} (or GOOGLE_API_KEY) is required for Gemini image "
+                f"{conn['api_key_env']} (or GOOGLE_API_KEY) is required for Gemini image "
                 "generation."
             )
-
-        self.client = genai.Client(api_key=gemini_api_key)
+        self.api_key = str(conn["api_key"])
+        self.base_url = str(conn["base_url"]).rstrip("/")
+        self.request_timeout_s = 120
         self.aspect_ratio = aspect_ratio
         self.image_size = image_size
-        self.model = "gemini-3-pro-image-preview"
+        self.model = str(conn["model"])
         self.prompt_manager = PromptManager(prompts_dir=PROMPTS_DATA_DIR)
+
+    def _generate_content(
+        self,
+        *,
+        prompt: str,
+        aspect_ratio: str | None = None,
+        image_size: str | None = None,
+        reference_image_path: Path | None = None,
+    ) -> dict:
+        """Call Gemini REST API with optional image input."""
+        if self.base_url.endswith(":generateContent"):
+            endpoint = self.base_url
+        else:
+            endpoint = f"{self.base_url}/models/{self.model}:generateContent"
+        parts: list[dict] = [{"text": prompt}]
+        if reference_image_path is not None:
+            mime_type, b64_data = _encode_image_path_to_inline_data(reference_image_path)
+            parts.append(
+                {
+                    "inlineData": {
+                        "mimeType": mime_type,
+                        "data": b64_data,
+                    }
+                }
+            )
+
+        generation_config = {"responseModalities": ["IMAGE"]}
+        if aspect_ratio:
+            generation_config["imageConfig"] = {"aspectRatio": aspect_ratio}
+            if image_size:
+                generation_config["imageConfig"]["imageSize"] = image_size
+
+        payload = {
+            "contents": [{"parts": parts}],
+            "generationConfig": generation_config,
+        }
+        params = {"key": self.api_key}
+
+        with track_runtime(
+            category="service",
+            name="image.gemini.rest.generateContent",
+            metadata={"model": self.model, "base_url": self.base_url},
+        ):
+            response = requests.post(
+                endpoint,
+                params=params,
+                json=payload,
+                timeout=(10, self.request_timeout_s),
+            )
+        response.raise_for_status()
+        return response.json()
 
     def generate_images(
         self,
@@ -431,22 +483,11 @@ class GeminiImageGenerator(BaseImageGenerator):
             )
 
             start_time = time.time()
-            with track_runtime(
-                category="service",
-                name="image.gemini.models.generate_content",
-                metadata={"model": self.model},
-            ):
-                response = self.client.models.generate_content(
-                    model=self.model,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        response_modalities=["IMAGE"],
-                        image_config=types.ImageConfig(
-                            aspect_ratio=aspect_ratio,
-                            image_size=self.image_size,
-                        ),
-                    ),
-                )
+            response = self._generate_content(
+                prompt=prompt,
+                aspect_ratio=aspect_ratio,
+                image_size=self.image_size,
+            )
             end_time = time.time()
 
             console_logger.info(
@@ -455,7 +496,9 @@ class GeminiImageGenerator(BaseImageGenerator):
             )
 
             _extract_and_save_gemini_image(
-                response=response, output_path=output_path, description=description
+                response=response,
+                output_path=output_path,
+                description=description,
             )
 
         # Generate all images concurrently.
@@ -536,24 +579,13 @@ class GeminiImageGenerator(BaseImageGenerator):
         """
         console_logger.info(f"Editing image {reference_image_path} (Gemini)")
 
-        image_input = Image.open(reference_image_path)
-
         start_time = time.time()
-        with track_runtime(
-            category="service",
-            name="image.gemini.models.generate_content",
-            metadata={"model": self.model},
-        ):
-            response = self.client.models.generate_content(
-                model=self.model,
-                contents=[prompt, image_input],
-                config=types.GenerateContentConfig(
-                    response_modalities=["IMAGE"],
-                    image_config=types.ImageConfig(
-                        aspect_ratio=self.aspect_ratio,
-                    ),
-                ),
-            )
+        response = self._generate_content(
+            prompt=prompt,
+            aspect_ratio=self.aspect_ratio,
+            image_size=self.image_size,
+            reference_image_path=reference_image_path,
+        )
         end_time = time.time()
 
         console_logger.info(
@@ -669,22 +701,41 @@ def _extract_and_save_openai_image(
 def _extract_and_save_gemini_image(
     response, output_path: Path, description: str
 ) -> None:
-    """Extract image data from Gemini response and save to file.
+    """Extract image data from Gemini response (SDK/REST) and save to file.
 
     Args:
         response: Gemini response object.
         output_path: Path where image will be saved.
         description: Description of the object for error messages.
     """
-    # Gemini returns images in response.parts (simplified API).
-    if not response.parts:
-        raise ValueError(f"No parts in Gemini response for {description}")
+    # SDK-style response support (backward compatible).
+    if hasattr(response, "parts"):
+        if not response.parts:
+            raise ValueError(f"No parts in Gemini response for {description}")
+        for part in response.parts:
+            image = part.as_image()
+            if image is not None:
+                image.save(str(output_path))
+                return
 
-    # Find the image part using as_image().
-    for part in response.parts:
-        image = part.as_image()
-        if image is not None:
-            image.save(str(output_path))
-            return
+    # REST-style response: candidates[].content.parts[].inlineData.data
+    if isinstance(response, dict):
+        candidates = response.get("candidates", [])
+        for candidate in candidates:
+            content = candidate.get("content", {})
+            for part in content.get("parts", []):
+                inline_data = part.get("inlineData") or part.get("inline_data")
+                if isinstance(inline_data, dict) and inline_data.get("data"):
+                    with open(output_path, "wb") as f:
+                        f.write(base64.b64decode(inline_data["data"]))
+                    return
 
     raise ValueError(f"No image data found in Gemini response for {description}")
+
+
+def _encode_image_path_to_inline_data(image_path: Path) -> tuple[str, str]:
+    """Encode image file for Gemini REST inlineData."""
+    mime_type = mimetypes.guess_type(str(image_path))[0] or "image/png"
+    with open(image_path, "rb") as f:
+        data = f.read()
+    return mime_type, base64.b64encode(data).decode("utf-8")

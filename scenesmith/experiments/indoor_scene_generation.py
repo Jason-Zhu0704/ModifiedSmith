@@ -138,15 +138,17 @@ class RenderGPUAllocator:
         for i in range(16):
             if Path(f"/dev/nvidia{i}").exists():
                 gpus.append(i)
-        return gpus if gpus else [0]  # Default to GPU 0 if none detected.
+        return gpus
 
-    def allocate(self) -> int:
+    def allocate(self) -> int | None:
         """Get next GPU in round-robin order.
 
         Returns:
-            GPU device index for BlenderServer.
+            GPU device index for BlenderServer, or None if no GPU is available.
         """
         with self._lock:
+            if not self._gpus:
+                return None
             gpu = self._gpus[self._counter % len(self._gpus)]
             self._counter += 1
             return gpu

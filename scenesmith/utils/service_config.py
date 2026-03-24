@@ -55,6 +55,37 @@ def resolve_gemini_api_key(service_cfg: Any | None, section: str) -> tuple[str |
     return api_key, api_key_env
 
 
+def resolve_gemini_connection(
+    service_cfg: Any | None, section: str
+) -> dict[str, str | None]:
+    """Resolve Gemini endpoint/model/key for a service section."""
+    section_cfg = _safe_get(service_cfg, "providers", section, default={}) or {}
+
+    api_key_env = section_cfg.get("gemini_api_key_env", "GOOGLE_API_KEY")
+    base_url_env = section_cfg.get("gemini_base_url_env", "SCENESMITH_GEMINI_BASE_URL")
+    model_env = section_cfg.get("gemini_model_env", "SCENESMITH_GEMINI_IMAGE_MODEL")
+
+    base_url_default = section_cfg.get(
+        "gemini_base_url_default", "https://generativelanguage.googleapis.com/v1beta"
+    )
+    model_default = section_cfg.get(
+        "gemini_model_default", "gemini-3-pro-image-preview"
+    )
+
+    api_key = os.environ.get(api_key_env) or os.environ.get("GOOGLE_API_KEY")
+    base_url = os.environ.get(base_url_env, base_url_default)
+    model = os.environ.get(model_env, model_default)
+
+    return {
+        "api_key": api_key,
+        "base_url": base_url,
+        "model": model,
+        "api_key_env": api_key_env,
+        "base_url_env": base_url_env,
+        "model_env": model_env,
+    }
+
+
 def build_openai_client(service_cfg: Any | None, section: str) -> OpenAI:
     conn = resolve_openai_connection(service_cfg=service_cfg, section=section)
     kwargs: dict[str, str] = {}
