@@ -10,7 +10,7 @@ session_memory:
   # Summarize older turns via LLM (if false, just strip images).
   enable_summarization: true
   # Model for summarization ("agent" uses cfg.openai.model).
-  summarization_model: "gpt-5.2"
+  summarization_model: "agent"
   # Thinking effort for summarization ("none", "low", "medium", "high").
   summarization_thinking: "low"
   # Intra-turn observation stripping: strip images from older observe_scene outputs
@@ -61,8 +61,8 @@ rendering:
 
 # Asset manager configuration
 asset_manager:
-  general_asset_source: "generated"
-  backend: "sam3d"
+  general_asset_source: ${services.asset_manager.general_asset_source}
+  backend: ${services.asset_manager.backend}
 
   router:
     enabled: true
@@ -85,7 +85,7 @@ asset_manager:
         texture_scale: 0.5  # Meters per tile for retrieved library textures (tileable)
         generator:
           enabled: true  # AI generation for custom artwork (posters, paintings, wall art)
-          backend: "openai"
+          backend: ${services.image_generation.backend}
           max_retries: 3
           default_roughness: 128
           texture_scale: 0.5
@@ -132,12 +132,12 @@ asset_manager:
         embeddings_path: "data/artvip_sdf/embeddings"
 
   image_generation:
-    backend: "openai"
+    backend: ${services.image_generation.backend}
     openai:
-      quality: "low"
+      quality: ${services.image_generation.openai.quality}
     gemini:
-      aspect_ratio: "1:1"
-      image_size: "1K"
+      aspect_ratio: ${services.image_generation.gemini.aspect_ratio}
+      image_size: ${services.image_generation.gemini.image_size}
   num_side_views_for_physics_analysis: 4
   side_view_elevation_degrees: 0.0
   floater_distance_threshold: 0.05
@@ -201,9 +201,9 @@ early_finish_min_score: 7
 
 # OpenAI model and reasoning configuration.
 openai:
-  model: "gpt-5.2"
-  service_tier: ${openai.service_tier}
-  vision_detail: "high"
+  model: ${services.llm.model}
+  service_tier: ${services.llm.service_tier}
+  vision_detail: ${services.llm.vision_detail}
   reasoning_effort:
     planner: "low"
     designer: "high"
@@ -221,10 +221,10 @@ openai:
 
 # OpenAI API timeout configuration (seconds).
 api_timeout:
-  connect: 10.0
-  read: 1800
-  write: 1800
-  pool: 1800
+  connect: ${services.api_timeout.connect}
+  read: ${services.api_timeout.read}
+  write: ${services.api_timeout.write}
+  pool: ${services.api_timeout.pool}
 
 # Loop detection configuration for function tools.
 loop_detection:

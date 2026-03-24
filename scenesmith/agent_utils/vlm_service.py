@@ -2,7 +2,8 @@ import logging
 
 from typing import Any
 
-from openai import OpenAI
+from scenesmith.utils.runtime_tracking import track_runtime
+from scenesmith.utils.service_config import build_openai_client
 
 console_logger = logging.getLogger(__name__)
 
@@ -16,7 +17,9 @@ class VLMService:
     Chat API for standard models) based on model capabilities.
     """
 
-    def __init__(self, service_tier: str | None = None) -> None:
+    def __init__(
+        self, service_tier: str | None = None, service_cfg: dict[str, Any] | None = None
+    ) -> None:
         """Initialize OpenAI client.
 
         Args:
@@ -24,7 +27,8 @@ class VLMService:
                 Valid values: "default", "flex", "priority", or None to use
                 project default.
         """
-        self.client = OpenAI()
+        self.client = build_openai_client(service_cfg=service_cfg, section="vlm")
+        self._service_cfg = service_cfg
         # Cache for model type detection.
         self._reasoning_models = {"gpt-5", "gpt-5.2", "o3", "o4"}
         self.service_tier = service_tier
@@ -73,7 +77,12 @@ class VLMService:
             }
             if self.service_tier:
                 kwargs["service_tier"] = self.service_tier
-            response = self.client.responses.create(**kwargs)
+            with track_runtime(
+                category="service",
+                name="vlm.openai.responses.create",
+                metadata={"model": model},
+            ):
+                response = self.client.responses.create(**kwargs)
 
             # Raise with diagnostic details if output_text is empty.
             if not response.output_text:
@@ -111,7 +120,12 @@ class VLMService:
             if self.service_tier:
                 kwargs["service_tier"] = self.service_tier
 
-            response = self.client.chat.completions.create(**kwargs)
+            with track_runtime(
+                category="service",
+                name="vlm.openai.chat.completions.create",
+                metadata={"model": model},
+            ):
+                response = self.client.chat.completions.create(**kwargs)
             content = response.choices[0].message.content
 
             # Validate response content.

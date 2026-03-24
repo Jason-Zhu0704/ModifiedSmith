@@ -1,0 +1,66 @@
+# Centralized external services configuration.
+# Update this file to switch providers or endpoints without touching agent configs.
+
+llm:
+  # Keep existing default model for compatibility.
+  model: "gpt-5.2"
+  # Uses global config.openai.service_tier by default.
+  service_tier: ${openai.service_tier}
+  vision_detail: "high"
+
+# Provider endpoints and credential env-vars.
+# Prefer setting SCENESMITH_* vars; OPENAI_API_KEY/GOOGLE_API_KEY remain fallbacks.
+providers:
+  vlm:
+    openai_api_key_env: "SCENESMITH_VLM_API_KEY"
+    openai_base_url_env: "SCENESMITH_VLM_BASE_URL"
+    openai_base_url_default: "https://api.openai.com/v1"
+  image_generation:
+    openai_api_key_env: "SCENESMITH_IMAGE_API_KEY"
+    openai_base_url_env: "SCENESMITH_IMAGE_BASE_URL"
+    openai_base_url_default: "https://api.openai.com/v1"
+    gemini_api_key_env: "SCENESMITH_GEMINI_API_KEY"
+
+# API timeouts used by all agents for LLM/network calls (seconds).
+api_timeout:
+  connect: 10.0
+  read: 1800
+  write: 1800
+  pool: 1800
+
+# Image generation provider settings.
+image_generation:
+  # Stable default: OpenAI Images API.
+  backend: "openai"
+  openai:
+    quality: "low"
+  gemini:
+    aspect_ratio: "1:1"
+    image_size: "1K"
+
+# Asset sourcing strategy for non-GPU-friendly default execution.
+# Set to "generated" to use text-to-3D backends.
+asset_manager:
+  general_asset_source: "hssd"
+  backend: "sam3d"
+
+# Shared experiment-side service endpoints.
+servers:
+  geometry_generation:
+    host: "127.0.0.1"
+    port: 7005
+  hssd_retrieval:
+    host: "127.0.0.1"
+    port: 7006
+  articulated_retrieval:
+    host: "127.0.0.1"
+    port: 7007
+  materials_retrieval:
+    host: "127.0.0.1"
+    port: 7008
+    data_path: "data/materials"
+    embeddings_path: "data/materials/embeddings"
+    use_top_k: 5
+  objaverse_retrieval:
+    host: "127.0.0.1"
+    port: 7009

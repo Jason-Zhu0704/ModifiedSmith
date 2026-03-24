@@ -267,6 +267,7 @@ class AssetManager:
         self.image_generator = create_image_generator(
             backend=cfg.asset_manager.image_generation.backend,
             config=cfg.asset_manager.image_generation,
+            service_cfg=getattr(cfg, "services", None),
         )
 
         # Create agent-specific subdirectories for organization.

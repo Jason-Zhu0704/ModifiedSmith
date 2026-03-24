@@ -8,22 +8,24 @@ import logging
 
 from typing import TypeVar
 
-from openai import AsyncOpenAI
 from pydantic import BaseModel
+
+from scenesmith.utils.runtime_tracking import track_runtime
+from scenesmith.utils.service_config import build_async_openai_client
 
 console_logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
 
 # Lazy-initialized client.
-_client: AsyncOpenAI | None = None
+_client = None
 
 
-def _get_client() -> AsyncOpenAI:
+def _get_client():
     """Get or create the async OpenAI client."""
     global _client
     if _client is None:
-        _client = AsyncOpenAI()
+        _client = build_async_openai_client(service_cfg=None, section="vlm")
     return _client
 
 
@@ -50,14 +52,19 @@ async def structured_llm_call(
     """
     client = _get_client()
 
-    response = await client.beta.chat.completions.parse(
-        model=model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_input},
-        ],
-        response_format=output_type,
-    )
+    with track_runtime(
+        category="service",
+        name="vlm.openai.chat.completions.parse",
+        metadata={"model": model},
+    ):
+        response = await client.beta.chat.completions.parse(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_input},
+            ],
+            response_format=output_type,
+        )
 
     parsed = response.choices[0].message.parsed
     if parsed is None:

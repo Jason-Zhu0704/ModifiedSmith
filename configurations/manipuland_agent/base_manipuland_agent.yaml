@@ -10,7 +10,7 @@ session_memory:
   # Summarize older turns via LLM (if false, just strip images).
   enable_summarization: true
   # Model for summarization ("agent" uses cfg.openai.model).
-  summarization_model: "gpt-5.2"
+  summarization_model: "agent"
   # Thinking effort for summarization ("none", "low", "medium", "high").
   summarization_thinking: "low"
   # Intra-turn observation stripping: strip images from older observe_scene outputs
@@ -66,10 +66,10 @@ rendering:
 # Asset manager configuration
 asset_manager:
   # Asset source: "generated" (Hunyuan3D/SAM3D) or "hssd" (HSSD retrieval)
-  general_asset_source: "generated"
+  general_asset_source: ${services.asset_manager.general_asset_source}
 
   # 3D generation backend (only used when general_asset_source="generated")
-  backend: "sam3d"
+  backend: ${services.asset_manager.backend}
 
   # Asset router configuration for LLM-advised asset acquisition.
   # Router analyzes requests and selects semantic strategies (generated/articulated/thin_covering).
@@ -161,17 +161,17 @@ asset_manager:
   image_generation:
     # Backend: "openai" (gpt-image-1.5) or "gemini" (gemini-3-pro-image-preview)
     # OpenAI requires OPENAI_API_KEY, Gemini requires GOOGLE_API_KEY
-    backend: "openai"
+    backend: ${services.image_generation.backend}
     # OpenAI-specific settings
     openai:
       # Quality parameter ("auto", "low", "medium", "high")
-      quality: "low"
+      quality: ${services.image_generation.openai.quality}
     # Gemini-specific settings
     gemini:
       # Aspect ratio for generated images
-      aspect_ratio: "1:1"
+      aspect_ratio: ${services.image_generation.gemini.aspect_ratio}
       # Image resolution ("1K", "2K", "4K")
-      image_size: "1K"
+      image_size: ${services.image_generation.gemini.image_size}
   # Number of side views to render for mesh physics analysis (mass, orientation, material)
   # Recommended: 4 for axis-aligned views, 8 for axis-aligned + diagonals
   num_side_views_for_physics_analysis: 4
@@ -236,10 +236,10 @@ collision_geometry:
 
 # OpenAI model and reasoning configuration
 openai:
-  model: "gpt-5.2"
-  service_tier: ${openai.service_tier}
+  model: ${services.llm.model}
+  service_tier: ${services.llm.service_tier}
   # Vision detail level for image processing
-  vision_detail: "high"
+  vision_detail: ${services.llm.vision_detail}
   # How much computational effort to spend on reasoning for different tasks.
   # Options: "minimal", "low", "medium", "high", "xhigh".
   # Higher effort = more thorough but slower and more expensive.
@@ -288,10 +288,10 @@ context_furniture:
 
 # OpenAI API timeout configuration (seconds).
 api_timeout:
-  connect: 10.0  # Connection establishment
-  read: 1800  # 30 minutes
-  write: 1800  # 30 minutes
-  pool: 1800  # 30 minutes
+  connect: ${services.api_timeout.connect}  # Connection establishment
+  read: ${services.api_timeout.read}  # 30 minutes
+  write: ${services.api_timeout.write}  # 30 minutes
+  pool: ${services.api_timeout.pool}  # 30 minutes
 
 # Loop detection configuration for function tools
 loop_detection:

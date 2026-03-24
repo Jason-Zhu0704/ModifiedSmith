@@ -17,6 +17,12 @@ from PIL import Image
 from scenesmith.prompts import PROMPTS_DATA_DIR
 from scenesmith.prompts.manager import PromptManager
 from scenesmith.prompts.registry import ImageGenerationPrompts
+from scenesmith.utils.runtime_tracking import track_runtime
+from scenesmith.utils.service_config import (
+    build_openai_client,
+    resolve_gemini_api_key,
+    resolve_openai_connection,
+)
 
 console_logger = logging.getLogger(__name__)
 
@@ -119,7 +125,12 @@ class BaseImageGenerator(ABC):
 class OpenAIImageGenerator(BaseImageGenerator):
     """Image generation using OpenAI gpt-image-1.5 via the Images API."""
 
-    def __init__(self, client: OpenAI | None = None, quality: str = "low"):
+    def __init__(
+        self,
+        client: OpenAI | None = None,
+        quality: str = "low",
+        service_cfg: dict | None = None,
+    ):
         """Initialize the generator.
 
         Args:
@@ -129,12 +140,15 @@ class OpenAIImageGenerator(BaseImageGenerator):
         Raises:
             ValueError: If OPENAI_API_KEY environment variable is not set.
         """
-        if client is None and not os.environ.get("OPENAI_API_KEY"):
+        conn = resolve_openai_connection(service_cfg=service_cfg, section="image_generation")
+        if client is None and not conn["api_key"]:
             raise ValueError(
-                "OPENAI_API_KEY environment variable is required for OpenAI image "
-                "generation. Set it with: export OPENAI_API_KEY='your-key'"
+                f"{conn['api_key_env']} (or OPENAI_API_KEY) is required for OpenAI "
+                "image generation."
             )
-        self.client = client or OpenAI()
+        self.client = client or build_openai_client(
+            service_cfg=service_cfg, section="image_generation"
+        )
         self.prompt_manager = PromptManager(prompts_dir=PROMPTS_DATA_DIR)
         self.image_quality = quality
         self.model = "gpt-image-1.5"
@@ -177,16 +191,21 @@ class OpenAIImageGenerator(BaseImageGenerator):
                 style_prompt=style_prompt,
             )
             start_time = time.time()
-            response = self.client.images.generate(
-                model=self.model,
-                prompt=prompt,
-                size=image_size,
-                n=1,
-                output_format="png",
-                quality=self.image_quality,
-                background="opaque",
-                moderation="low",
-            )
+            with track_runtime(
+                category="service",
+                name="image.openai.images.generate",
+                metadata={"model": self.model},
+            ):
+                response = self.client.images.generate(
+                    model=self.model,
+                    prompt=prompt,
+                    size=image_size,
+                    n=1,
+                    output_format="png",
+                    quality=self.image_quality,
+                    background="opaque",
+                    moderation="low",
+                )
             end_time = time.time()
             console_logger.info(
                 f"Generated image for {label} in {end_time - start_time:.2f} seconds."
@@ -278,9 +297,14 @@ class OpenAIImageGenerator(BaseImageGenerator):
 
         start_time = time.time()
         with open(reference_image_path, "rb") as image_file:
-            response = self.client.images.edit(
-                model=self.model, image=image_file, prompt=prompt, size=size
-            )
+            with track_runtime(
+                category="service",
+                name="image.openai.images.edit",
+                metadata={"model": self.model},
+            ):
+                response = self.client.images.edit(
+                    model=self.model, image=image_file, prompt=prompt, size=size
+                )
         end_time = time.time()
 
         console_logger.info(f"Edited image in {end_time - start_time:.2f} seconds")
@@ -344,6 +368,7 @@ class GeminiImageGenerator(BaseImageGenerator):
         self,
         aspect_ratio: str = "1:1",
         image_size: str = "1K",
+        service_cfg: dict | None = None,
     ):
         """Initialize the Gemini generator.
 
@@ -354,13 +379,16 @@ class GeminiImageGenerator(BaseImageGenerator):
         Raises:
             ValueError: If GOOGLE_API_KEY environment variable is not set.
         """
-        if not os.environ.get("GOOGLE_API_KEY"):
+        gemini_api_key, api_key_env = resolve_gemini_api_key(
+            service_cfg=service_cfg, section="image_generation"
+        )
+        if not gemini_api_key:
             raise ValueError(
-                "GOOGLE_API_KEY environment variable is required for Gemini image "
-                "generation. Set it with: export GOOGLE_API_KEY='your-key'"
+                f"{api_key_env} (or GOOGLE_API_KEY) is required for Gemini image "
+                "generation."
             )
 
-        self.client = genai.Client()
+        self.client = genai.Client(api_key=gemini_api_key)
         self.aspect_ratio = aspect_ratio
         self.image_size = image_size
         self.model = "gemini-3-pro-image-preview"
@@ -403,17 +431,22 @@ class GeminiImageGenerator(BaseImageGenerator):
             )
 
             start_time = time.time()
-            response = self.client.models.generate_content(
-                model=self.model,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_modalities=["IMAGE"],
-                    image_config=types.ImageConfig(
-                        aspect_ratio=aspect_ratio,
-                        image_size=self.image_size,
+            with track_runtime(
+                category="service",
+                name="image.gemini.models.generate_content",
+                metadata={"model": self.model},
+            ):
+                response = self.client.models.generate_content(
+                    model=self.model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_modalities=["IMAGE"],
+                        image_config=types.ImageConfig(
+                            aspect_ratio=aspect_ratio,
+                            image_size=self.image_size,
+                        ),
                     ),
-                ),
-            )
+                )
             end_time = time.time()
 
             console_logger.info(
@@ -506,16 +539,21 @@ class GeminiImageGenerator(BaseImageGenerator):
         image_input = Image.open(reference_image_path)
 
         start_time = time.time()
-        response = self.client.models.generate_content(
-            model=self.model,
-            contents=[prompt, image_input],
-            config=types.GenerateContentConfig(
-                response_modalities=["IMAGE"],
-                image_config=types.ImageConfig(
-                    aspect_ratio=self.aspect_ratio,
+        with track_runtime(
+            category="service",
+            name="image.gemini.models.generate_content",
+            metadata={"model": self.model},
+        ):
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=[prompt, image_input],
+                config=types.GenerateContentConfig(
+                    response_modalities=["IMAGE"],
+                    image_config=types.ImageConfig(
+                        aspect_ratio=self.aspect_ratio,
+                    ),
                 ),
-            ),
-        )
+            )
         end_time = time.time()
 
         console_logger.info(
@@ -574,7 +612,9 @@ class GeminiImageGenerator(BaseImageGenerator):
         return result
 
 
-def create_image_generator(backend: str, config: DictConfig) -> BaseImageGenerator:
+def create_image_generator(
+    backend: str, config: DictConfig, service_cfg: dict | None = None
+) -> BaseImageGenerator:
     """Factory function to create the appropriate image generator.
 
     Args:
@@ -592,11 +632,14 @@ def create_image_generator(backend: str, config: DictConfig) -> BaseImageGenerat
         ValueError: If unknown backend is specified.
     """
     if backend == "openai":
-        return OpenAIImageGenerator(quality=config.openai.quality)
+        return OpenAIImageGenerator(
+            quality=config.openai.quality, service_cfg=service_cfg
+        )
     elif backend == "gemini":
         return GeminiImageGenerator(
             aspect_ratio=config.gemini.aspect_ratio,
             image_size=config.gemini.image_size,
+            service_cfg=service_cfg,
         )
     else:
         raise ValueError(f"Unknown image generation backend: {backend}")

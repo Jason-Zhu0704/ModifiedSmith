@@ -6,6 +6,8 @@ from typing import Iterator
 
 import requests
 
+from scenesmith.utils.runtime_tracking import track_runtime
+
 from .dataclasses import (
     GeometryGenerationError,
     GeometryGenerationServerRequest,
@@ -103,8 +105,13 @@ class GeometryGenerationClient:
                 request_data = [req.to_dict() for req in geometry_requests]
 
                 # Send streaming request.
-                http_response = self.session.post(
-                    f"{self.base_url}/generate_geometries",
+                with track_runtime(
+                    category="service",
+                    name="geometry_generation.http.generate_geometries",
+                    metadata={"base_url": self.base_url, "requests": len(request_data)},
+                ):
+                    http_response = self.session.post(
+                        f"{self.base_url}/generate_geometries",
                     json=request_data,
                     stream=True,
                     timeout=(10, timeout_s),  # 10s connect, timeout_s read
@@ -188,7 +195,12 @@ class GeometryGenerationClient:
             or times out.
         """
         try:
-            response = self.session.get(f"{self.base_url}/health", timeout=5)
+            with track_runtime(
+                category="service",
+                name="geometry_generation.http.health",
+                metadata={"base_url": self.base_url},
+            ):
+                response = self.session.get(f"{self.base_url}/health", timeout=5)
             response.raise_for_status()
             return True
         except Exception as e:

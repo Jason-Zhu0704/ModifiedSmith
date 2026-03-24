@@ -40,31 +40,31 @@ pipeline:
 
 # Geometry generation server settings
 geometry_generation_server:
-  host: "127.0.0.1"
-  port: 7005
+  host: ${services.servers.geometry_generation.host}
+  port: ${services.servers.geometry_generation.port}
 
 # HSSD retrieval server settings
 hssd_retrieval_server:
-  host: "127.0.0.1"
-  port: 7006
+  host: ${services.servers.hssd_retrieval.host}
+  port: ${services.servers.hssd_retrieval.port}
 
 # Articulated retrieval server settings
 articulated_retrieval_server:
-  host: "127.0.0.1"
-  port: 7007
+  host: ${services.servers.articulated_retrieval.host}
+  port: ${services.servers.articulated_retrieval.port}
 
 # Objaverse retrieval server settings
 objaverse_retrieval_server:
-  host: "127.0.0.1"
-  port: 7009
+  host: ${services.servers.objaverse_retrieval.host}
+  port: ${services.servers.objaverse_retrieval.port}
 
 # Materials retrieval server settings
 materials_retrieval_server:
-  host: "127.0.0.1"
-  port: 7008
-  data_path: "data/materials"
-  embeddings_path: "data/materials/embeddings"
-  use_top_k: 5
+  host: ${services.servers.materials_retrieval.host}
+  port: ${services.servers.materials_retrieval.port}
+  data_path: ${services.servers.materials_retrieval.data_path}
+  embeddings_path: ${services.servers.materials_retrieval.embeddings_path}
+  use_top_k: ${services.servers.materials_retrieval.use_top_k}
 
 # SceneEval export configuration.
 sceneeval_export:

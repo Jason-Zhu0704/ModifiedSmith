@@ -11,6 +11,7 @@ openai:
 
 defaults:
   - experiment: indoor_scene_generation # Experiment yaml file name in configurations/experiment folder
+  - services: default # Centralized external service and API settings
   - floor_plan_agent: stateful_floor_plan_agent # Floor plan agent config in configurations/floor_plan_agent folder
   - furniture_agent: stateful_furniture_agent # Furniture agent yaml file name in configurations/furniture_agent folder
   - wall_agent: stateful_wall_agent # Wall agent yaml file name in configurations/wall_agent folder

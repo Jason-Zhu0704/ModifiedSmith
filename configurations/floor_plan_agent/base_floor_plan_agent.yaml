@@ -13,7 +13,7 @@ session_memory:
   # Summarize older turns via LLM (if false, just strip images).
   enable_summarization: true
   # Model for summarization ("agent" uses cfg.openai.model).
-  summarization_model: "gpt-5.2"
+  summarization_model: "agent"
   # Thinking effort for summarization ("none", "low", "medium", "high").
   summarization_thinking: "low"
   # Intra-turn observation stripping: strip images from older observe_scene outputs
@@ -92,9 +92,9 @@ windows:
 
 # OpenAI model and reasoning configuration
 openai:
-  model: "gpt-5.2"
-  service_tier: ${openai.service_tier}
-  vision_detail: "high"
+  model: ${services.llm.model}
+  service_tier: ${services.llm.service_tier}
+  vision_detail: ${services.llm.vision_detail}
   reasoning_effort:
     planner: "low"
     designer: "high"
@@ -106,10 +106,10 @@ openai:
 
 # OpenAI API timeout configuration (seconds)
 api_timeout:
-  connect: 30.0
-  read: 1800
-  write: 1800
-  pool: 1800
+  connect: ${services.api_timeout.connect}
+  read: ${services.api_timeout.read}
+  write: ${services.api_timeout.write}
+  pool: ${services.api_timeout.pool}
 
 # Maximum number of critique-and-improve rounds before stopping
 max_critique_rounds: 2

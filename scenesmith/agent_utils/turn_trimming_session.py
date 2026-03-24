@@ -24,6 +24,8 @@ from openai.types.shared import Reasoning
 
 from scenesmith.prompts import prompt_registry
 from scenesmith.prompts.registry import SessionMemoryPrompts
+from scenesmith.utils.runtime_tracking import track_runtime
+from scenesmith.utils.service_config import build_async_openai_client
 
 console_logger = logging.getLogger(__name__)
 
@@ -382,7 +384,9 @@ class TurnTrimmingSession:
     def _get_openai_client(self) -> AsyncOpenAI:
         """Get or create the OpenAI client for summarization."""
         if self._openai_client is None:
-            self._openai_client = AsyncOpenAI()
+            self._openai_client = build_async_openai_client(
+                service_cfg=getattr(self._cfg, "services", None), section="vlm"
+            )
         return self._openai_client
 
     async def _summarize_turn(self, turn: Turn, turn_number: int) -> str:
@@ -424,12 +428,17 @@ class TurnTrimmingSession:
         )
 
         try:
-            response = await self._get_openai_client().responses.create(
-                model=self._summarization_model,
-                instructions=summarization_prompt,
-                input=text,
-                reasoning=reasoning,
-            )
+            with track_runtime(
+                category="service",
+                name="vlm.openai.responses.create",
+                metadata={"model": self._summarization_model, "purpose": "summarize"},
+            ):
+                response = await self._get_openai_client().responses.create(
+                    model=self._summarization_model,
+                    instructions=summarization_prompt,
+                    input=text,
+                    reasoning=reasoning,
+                )
             summary = response.output_text or "[Summary generation failed]"
         except Exception as e:
             console_logger.error(f"Summarization failed: {e}")

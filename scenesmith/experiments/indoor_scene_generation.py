@@ -42,6 +42,12 @@ from scenesmith.manipuland_agents.stateful_manipuland_agent import (
     StatefulManipulandAgent,
 )
 from scenesmith.utils.logging import ConsoleLogger, FileLoggingContext
+from scenesmith.utils.runtime_tracking import (
+    RuntimeTracker,
+    activate_runtime_tracker,
+    track_runtime,
+    write_runtime_reports,
+)
 from scenesmith.utils.parallel import run_parallel_isolated
 from scenesmith.utils.print_utils import bold_green, yellow
 from scenesmith.wall_agents.stateful_wall_agent import StatefulWallAgent
@@ -472,6 +478,7 @@ def _generate_room(
     stop_stage: str = "manipuland",
     house_layout: HouseLayout | None = None,
     render_gpu_id: int | None = None,
+    events_path: str | None = None,
 ) -> RoomScene:
     """Generate a single room with furniture, wall/ceiling objects, and manipulands.
 
@@ -513,6 +520,8 @@ def _generate_room(
     """
     room_start_time = time.time()
 
+    tracker = RuntimeTracker(Path(events_path)) if events_path else None
+
     # Create scene and add walls and floor from room geometry.
     scene = RoomScene(
         room_geometry=room_geometry,
@@ -538,27 +547,33 @@ def _generate_room(
 
     # Furniture stage.
     if start_idx <= 0:  # Run furniture if starting from furniture or earlier.
-        with custom_span("furniture_placement"):
-            console_logger.info("Adding furniture to scene")
-            start_time = time.time()
-            furniture_agent = BaseExperiment.build_furniture_agent(
-                cfg_dict=cfg_dict,
-                compatible_agents=(
-                    IndoorSceneGenerationExperiment.compatible_furniture_agents
-                ),
-                logger=logger,
-                render_gpu_id=render_gpu_id,
-            )
-            try:
-                asyncio.run(furniture_agent.add_furniture(scene=scene))
-            finally:
-                # Always cleanup server subprocesses.
-                furniture_agent.cleanup()
-            end_time = time.time()
-            console_logger.info(
-                f"Furniture added to room {room_id} in "
-                f"{timedelta(seconds=end_time - start_time)}"
-            )
+        with activate_runtime_tracker(tracker):
+            with custom_span("furniture_placement"):
+                with track_runtime(
+                    category="program",
+                    name="room.furniture_placement",
+                    metadata={"room_id": room_id},
+                ):
+                    console_logger.info("Adding furniture to scene")
+                    start_time = time.time()
+                    furniture_agent = BaseExperiment.build_furniture_agent(
+                        cfg_dict=cfg_dict,
+                        compatible_agents=(
+                            IndoorSceneGenerationExperiment.compatible_furniture_agents
+                        ),
+                        logger=logger,
+                        render_gpu_id=render_gpu_id,
+                    )
+                    try:
+                        asyncio.run(furniture_agent.add_furniture(scene=scene))
+                    finally:
+                        # Always cleanup server subprocesses.
+                        furniture_agent.cleanup()
+                    end_time = time.time()
+                    console_logger.info(
+                        f"Furniture added to room {room_id} in "
+                        f"{timedelta(seconds=end_time - start_time)}"
+                    )
 
         # Furniture post-processing (projection + simulation).
         if projection_cfg["enabled"] and projection_cfg["furniture"]["enabled"]:
@@ -582,28 +597,38 @@ def _generate_room(
 
             # Get fallen furniture config from physics_validation.
             physics_val_cfg = cfg_dict["furniture_agent"]["physics_validation"]
-            scene, projection_success, removed_ids = (
-                apply_physical_feasibility_postprocessing(
-                    scene=scene,
-                    weld_furniture=False,
-                    projection_enabled=True,
-                    projection_influence_distance=furniture_cfg["influence_distance"],
-                    projection_solver_name=furniture_cfg["solver_name"],
-                    projection_iteration_limit=furniture_cfg["iteration_limit"],
-                    projection_time_limit_s=furniture_cfg["time_limit_s"],
-                    projection_xy_only=furniture_cfg["xy_only"],
-                    projection_fix_rotation=furniture_cfg["fix_rotation"],
-                    simulation_enabled=sim_cfg["enabled"],
-                    simulation_time_s=sim_cfg["simulation_time_s"],
-                    simulation_time_step_s=sim_cfg["time_step_s"],
-                    simulation_timeout_s=sim_cfg["timeout_s"],
-                    simulation_html_path=furniture_sim_html_path,
-                    remove_fallen_furniture=physics_val_cfg["remove_fallen_furniture"],
-                    fallen_tilt_threshold_degrees=physics_val_cfg[
-                        "fallen_tilt_threshold_degrees"
-                    ],
-                )
-            )
+            with activate_runtime_tracker(tracker):
+                with track_runtime(
+                    category="program",
+                    name="room.furniture_postprocess",
+                    metadata={"room_id": room_id},
+                ):
+                    scene, projection_success, removed_ids = (
+                        apply_physical_feasibility_postprocessing(
+                            scene=scene,
+                            weld_furniture=False,
+                            projection_enabled=True,
+                            projection_influence_distance=furniture_cfg[
+                                "influence_distance"
+                            ],
+                            projection_solver_name=furniture_cfg["solver_name"],
+                            projection_iteration_limit=furniture_cfg["iteration_limit"],
+                            projection_time_limit_s=furniture_cfg["time_limit_s"],
+                            projection_xy_only=furniture_cfg["xy_only"],
+                            projection_fix_rotation=furniture_cfg["fix_rotation"],
+                            simulation_enabled=sim_cfg["enabled"],
+                            simulation_time_s=sim_cfg["simulation_time_s"],
+                            simulation_time_step_s=sim_cfg["time_step_s"],
+                            simulation_timeout_s=sim_cfg["timeout_s"],
+                            simulation_html_path=furniture_sim_html_path,
+                            remove_fallen_furniture=physics_val_cfg[
+                                "remove_fallen_furniture"
+                            ],
+                            fallen_tilt_threshold_degrees=physics_val_cfg[
+                                "fallen_tilt_threshold_degrees"
+                            ],
+                        )
+                    )
             end_time = time.time()
             if removed_ids:
                 console_logger.info(
@@ -654,43 +679,49 @@ def _generate_room(
 
     # Wall objects stage.
     if start_idx <= 1:  # Run wall_objects if starting from wall_objects or earlier.
-        with custom_span("wall_object_placement"):
-            console_logger.info("Adding wall-mounted objects to scene")
-            start_time = time.time()
+        with activate_runtime_tracker(tracker):
+            with custom_span("wall_object_placement"):
+                with track_runtime(
+                    category="program",
+                    name="room.wall_placement",
+                    metadata={"room_id": room_id},
+                ):
+                    console_logger.info("Adding wall-mounted objects to scene")
+                    start_time = time.time()
 
-            # Load house_layout from parent directory (saved during floor plan stage).
-            house_layout_path = room_dir.parent / "house_layout.json"
-            if not house_layout_path.exists():
-                raise FileNotFoundError(
-                    f"Cannot run wall_objects stage: house_layout.json not found at "
-                    f"{house_layout_path}. This should have been saved during floor "
-                    f"plan generation."
-                )
-            with open(house_layout_path) as f:
-                house_layout_dict = json.load(f)
-            house_layout = HouseLayout.from_dict(
-                house_layout_dict, house_dir=room_dir.parent
-            )
+                    # Load house_layout from parent directory (saved during floor plan stage).
+                    house_layout_path = room_dir.parent / "house_layout.json"
+                    if not house_layout_path.exists():
+                        raise FileNotFoundError(
+                            f"Cannot run wall_objects stage: house_layout.json not found at "
+                            f"{house_layout_path}. This should have been saved during floor "
+                            f"plan generation."
+                        )
+                    with open(house_layout_path) as f:
+                        house_layout_dict = json.load(f)
+                    house_layout = HouseLayout.from_dict(
+                        house_layout_dict, house_dir=room_dir.parent
+                    )
 
-            wall_agent = BaseExperiment.build_wall_agent(
-                cfg_dict=cfg_dict,
-                compatible_agents=IndoorSceneGenerationExperiment.compatible_wall_agents,
-                logger=logger,
-                house_layout=house_layout,
-                ceiling_height=room_geometry.wall_height,
-                wall_thickness=room_geometry.wall_thickness,
-                render_gpu_id=render_gpu_id,
-            )
-            try:
-                asyncio.run(wall_agent.add_wall_objects(scene=scene))
-            finally:
-                # Always cleanup server subprocesses.
-                wall_agent.cleanup()
-            end_time = time.time()
-            console_logger.info(
-                f"Wall objects added to room {room_id} in "
-                f"{timedelta(seconds=end_time - start_time)}"
-            )
+                    wall_agent = BaseExperiment.build_wall_agent(
+                        cfg_dict=cfg_dict,
+                        compatible_agents=IndoorSceneGenerationExperiment.compatible_wall_agents,
+                        logger=logger,
+                        house_layout=house_layout,
+                        ceiling_height=room_geometry.wall_height,
+                        wall_thickness=room_geometry.wall_thickness,
+                        render_gpu_id=render_gpu_id,
+                    )
+                    try:
+                        asyncio.run(wall_agent.add_wall_objects(scene=scene))
+                    finally:
+                        # Always cleanup server subprocesses.
+                        wall_agent.cleanup()
+                    end_time = time.time()
+                    console_logger.info(
+                        f"Wall objects added to room {room_id} in "
+                        f"{timedelta(seconds=end_time - start_time)}"
+                    )
 
         # Always save state after wall_objects stage (unconditional for resumability).
         logger.log_scene(scene=scene, name="scene_after_wall_objects")
@@ -727,29 +758,35 @@ def _generate_room(
 
     # Ceiling objects stage.
     if start_idx <= 2:  # Run ceiling if starting from ceiling or earlier.
-        with custom_span("ceiling_object_placement"):
-            console_logger.info("Adding ceiling-mounted objects to scene")
-            start_time = time.time()
+        with activate_runtime_tracker(tracker):
+            with custom_span("ceiling_object_placement"):
+                with track_runtime(
+                    category="program",
+                    name="room.ceiling_placement",
+                    metadata={"room_id": room_id},
+                ):
+                    console_logger.info("Adding ceiling-mounted objects to scene")
+                    start_time = time.time()
 
-            ceiling_agent = BaseExperiment.build_ceiling_agent(
-                cfg_dict=cfg_dict,
-                compatible_agents=(
-                    IndoorSceneGenerationExperiment.compatible_ceiling_agents
-                ),
-                logger=logger,
-                ceiling_height=room_geometry.wall_height,
-                render_gpu_id=render_gpu_id,
-            )
-            try:
-                asyncio.run(ceiling_agent.add_ceiling_objects(scene=scene))
-            finally:
-                # Always cleanup server subprocesses.
-                ceiling_agent.cleanup()
-            end_time = time.time()
-            console_logger.info(
-                f"Ceiling objects added to room {room_id} in "
-                f"{timedelta(seconds=end_time - start_time)}"
-            )
+                    ceiling_agent = BaseExperiment.build_ceiling_agent(
+                        cfg_dict=cfg_dict,
+                        compatible_agents=(
+                            IndoorSceneGenerationExperiment.compatible_ceiling_agents
+                        ),
+                        logger=logger,
+                        ceiling_height=room_geometry.wall_height,
+                        render_gpu_id=render_gpu_id,
+                    )
+                    try:
+                        asyncio.run(ceiling_agent.add_ceiling_objects(scene=scene))
+                    finally:
+                        # Always cleanup server subprocesses.
+                        ceiling_agent.cleanup()
+                    end_time = time.time()
+                    console_logger.info(
+                        f"Ceiling objects added to room {room_id} in "
+                        f"{timedelta(seconds=end_time - start_time)}"
+                    )
 
         # Always save state after ceiling stage (unconditional for resumability).
         logger.log_scene(scene=scene, name="scene_after_ceiling_objects")
@@ -790,23 +827,29 @@ def _generate_room(
         return scene
 
     # Add manipulands.
-    with custom_span("manipuland_placement"):
-        console_logger.info("Adding manipulands to scene")
-        start_time = time.time()
-        manipuland_agent = BaseExperiment.build_manipuland_agent(
-            cfg_dict=cfg_dict,
-            compatible_agents=(
-                IndoorSceneGenerationExperiment.compatible_manipuland_agents
-            ),
-            logger=logger,
-            render_gpu_id=render_gpu_id,
-        )
-        asyncio.run(manipuland_agent.add_manipulands(scene=scene))
-        end_time = time.time()
-        console_logger.info(
-            f"Manipulands added to room {room_id} in "
-            f"{timedelta(seconds=end_time - start_time)}"
-        )
+    with activate_runtime_tracker(tracker):
+        with custom_span("manipuland_placement"):
+            with track_runtime(
+                category="program",
+                name="room.manipuland_placement",
+                metadata={"room_id": room_id},
+            ):
+                console_logger.info("Adding manipulands to scene")
+                start_time = time.time()
+                manipuland_agent = BaseExperiment.build_manipuland_agent(
+                    cfg_dict=cfg_dict,
+                    compatible_agents=(
+                        IndoorSceneGenerationExperiment.compatible_manipuland_agents
+                    ),
+                    logger=logger,
+                    render_gpu_id=render_gpu_id,
+                )
+                asyncio.run(manipuland_agent.add_manipulands(scene=scene))
+                end_time = time.time()
+                console_logger.info(
+                    f"Manipulands added to room {room_id} in "
+                    f"{timedelta(seconds=end_time - start_time)}"
+                )
 
     # Final post-processing (projection + simulation).
     if projection_cfg["enabled"] and projection_cfg["final"]["enabled"]:
@@ -830,37 +873,43 @@ def _generate_room(
         # Fallen furniture removal is not needed here (furniture is welded).
         # Get fallen manipuland config from manipuland_agent physics_validation.
         manipuland_physics_cfg = cfg_dict["manipuland_agent"]["physics_validation"]
-        scene, projection_success, removed_ids = (
-            apply_physical_feasibility_postprocessing(
-                scene=scene,
-                weld_furniture=True,
-                projection_enabled=True,
-                projection_influence_distance=final_cfg["influence_distance"],
-                projection_solver_name=final_cfg["solver_name"],
-                projection_iteration_limit=final_cfg["iteration_limit"],
-                projection_time_limit_s=final_cfg["time_limit_s"],
-                projection_xy_only=final_cfg["xy_only"],
-                projection_fix_rotation=final_cfg["fix_rotation"],
-                simulation_enabled=sim_cfg["enabled"],
-                simulation_time_s=sim_cfg["simulation_time_s"],
-                simulation_time_step_s=sim_cfg["time_step_s"],
-                simulation_timeout_s=sim_cfg["timeout_s"],
-                simulation_html_path=final_sim_html_path,
-                remove_fallen_furniture=False,
-                remove_fallen_manipulands=manipuland_physics_cfg[
-                    "remove_fallen_manipulands"
-                ],
-                fallen_manipuland_floor_z=manipuland_physics_cfg[
-                    "fallen_manipuland_floor_z"
-                ],
-                fallen_manipuland_near_floor_z=manipuland_physics_cfg[
-                    "fallen_manipuland_near_floor_z"
-                ],
-                fallen_manipuland_z_displacement=manipuland_physics_cfg[
-                    "fallen_manipuland_z_displacement"
-                ],
-            )
-        )
+        with activate_runtime_tracker(tracker):
+            with track_runtime(
+                category="program",
+                name="room.final_postprocess",
+                metadata={"room_id": room_id},
+            ):
+                scene, projection_success, removed_ids = (
+                    apply_physical_feasibility_postprocessing(
+                        scene=scene,
+                        weld_furniture=True,
+                        projection_enabled=True,
+                        projection_influence_distance=final_cfg["influence_distance"],
+                        projection_solver_name=final_cfg["solver_name"],
+                        projection_iteration_limit=final_cfg["iteration_limit"],
+                        projection_time_limit_s=final_cfg["time_limit_s"],
+                        projection_xy_only=final_cfg["xy_only"],
+                        projection_fix_rotation=final_cfg["fix_rotation"],
+                        simulation_enabled=sim_cfg["enabled"],
+                        simulation_time_s=sim_cfg["simulation_time_s"],
+                        simulation_time_step_s=sim_cfg["time_step_s"],
+                        simulation_timeout_s=sim_cfg["timeout_s"],
+                        simulation_html_path=final_sim_html_path,
+                        remove_fallen_furniture=False,
+                        remove_fallen_manipulands=manipuland_physics_cfg[
+                            "remove_fallen_manipulands"
+                        ],
+                        fallen_manipuland_floor_z=manipuland_physics_cfg[
+                            "fallen_manipuland_floor_z"
+                        ],
+                        fallen_manipuland_near_floor_z=manipuland_physics_cfg[
+                            "fallen_manipuland_near_floor_z"
+                        ],
+                        fallen_manipuland_z_displacement=manipuland_physics_cfg[
+                            "fallen_manipuland_z_displacement"
+                        ],
+                    )
+                )
         end_time = time.time()
         if removed_ids:
             console_logger.info(
@@ -876,10 +925,16 @@ def _generate_room(
             )
 
     # Log and export final scene.
-    logger.log_scene(scene=scene, name="final_scene")
-    _export_scene_blend_file(
-        scene=scene, scene_dir=room_dir, cfg_dict=cfg_dict, name="final_scene"
-    )
+    with activate_runtime_tracker(tracker):
+        with track_runtime(
+            category="program",
+            name="room.export_final_scene",
+            metadata={"room_id": room_id},
+        ):
+            logger.log_scene(scene=scene, name="final_scene")
+            _export_scene_blend_file(
+                scene=scene, scene_dir=room_dir, cfg_dict=cfg_dict, name="final_scene"
+            )
 
     # Export to SceneEval format if enabled.
     sceneeval_cfg = cfg_dict["experiment"]["sceneeval_export"]
@@ -910,6 +965,7 @@ def _run_sequential_room_generation(
     start_stage: str,
     stop_stage: str,
     render_gpu_id: int | None = None,
+    events_path: str | None = None,
 ) -> dict[str, RoomScene]:
     """Generate rooms sequentially (existing behavior).
 
@@ -946,6 +1002,7 @@ def _run_sequential_room_generation(
                     stop_stage=stop_stage,
                     house_layout=house_layout,
                     render_gpu_id=render_gpu_id,
+                    events_path=events_path,
                 )
                 rooms[room_id] = room_scene
     return rooms
@@ -957,6 +1014,7 @@ def _generate_floor_plan_worker(
     cfg_dict: dict,
     experiment_run_id: str | None,
     render_gpu_id: int | None = None,
+    events_path: str | None = None,
 ) -> None:
     """Run floor plan generation in isolated subprocess.
 
@@ -976,6 +1034,7 @@ def _generate_floor_plan_worker(
     _reset_inherited_sdk_state()
 
     faulthandler.enable()
+    tracker = RuntimeTracker(Path(events_path)) if events_path else None
 
     scene_path = Path(scene_dir)
     logger = ConsoleLogger(output_dir=scene_path)
@@ -990,31 +1049,39 @@ def _generate_floor_plan_worker(
         if experiment_run_id:
             trace_metadata["experiment_run_id"] = experiment_run_id
 
-        with trace(workflow_name="floor_plan_generation", metadata=trace_metadata):
-            with custom_span("floor_plan_generation"):
-                floor_plan_agent = BaseExperiment.build_floor_plan_agent(
-                    cfg_dict=cfg_dict,
-                    compatible_agents=(
-                        IndoorSceneGenerationExperiment.compatible_floor_plan_agents
-                    ),
-                    logger=logger,
-                    render_gpu_id=render_gpu_id,
-                )
-                try:
-                    house_layout = asyncio.run(
-                        floor_plan_agent.generate_house_layout(
-                            prompt=prompt,
-                            output_dir=scene_path / "floor_plans",
+        with activate_runtime_tracker(tracker):
+            with trace(workflow_name="floor_plan_generation", metadata=trace_metadata):
+                with custom_span("floor_plan_generation"):
+                    with track_runtime(
+                        category="program",
+                        name="scene.floor_plan_generation",
+                        metadata={"scene_dir": scene_dir},
+                    ):
+                        floor_plan_agent = BaseExperiment.build_floor_plan_agent(
+                            cfg_dict=cfg_dict,
+                            compatible_agents=(
+                                IndoorSceneGenerationExperiment.compatible_floor_plan_agents
+                            ),
+                            logger=logger,
+                            render_gpu_id=render_gpu_id,
                         )
-                    )
-                finally:
-                    floor_plan_agent.cleanup()
+                        try:
+                            house_layout = asyncio.run(
+                                floor_plan_agent.generate_house_layout(
+                                    prompt=prompt,
+                                    output_dir=scene_path / "floor_plans",
+                                )
+                            )
+                        finally:
+                            floor_plan_agent.cleanup()
 
-                # Save to disk for parent to load.
-                house_layout_path = scene_path / "house_layout.json"
-                with open(house_layout_path, "w") as f:
-                    json.dump(house_layout.to_dict(scene_dir=scene_path), f, indent=2)
-                console_logger.info(f"Saved house layout to {house_layout_path}")
+                        # Save to disk for parent to load.
+                        house_layout_path = scene_path / "house_layout.json"
+                        with open(house_layout_path, "w") as f:
+                            json.dump(
+                                house_layout.to_dict(scene_dir=scene_path), f, indent=2
+                            )
+                        console_logger.info(f"Saved house layout to {house_layout_path}")
 
 
 def _generate_room_worker(
@@ -1029,6 +1096,7 @@ def _generate_room_worker(
     experiment_run_id: str | None = None,
     house_layout_dict: dict | None = None,
     render_gpu_id: int | None = None,
+    events_path: str | None = None,
 ) -> dict:
     """Worker function for parallel room generation.
 
@@ -1059,6 +1127,7 @@ def _generate_room_worker(
     _reset_inherited_sdk_state()
 
     room_dir_path = Path(room_dir)
+    tracker = RuntimeTracker(Path(events_path)) if events_path else None
 
     faulthandler.enable()
 
@@ -1094,22 +1163,24 @@ def _generate_room_worker(
         if experiment_run_id:
             trace_metadata["experiment_run_id"] = experiment_run_id
 
-        with trace(
-            workflow_name=f"scene_{scene_id:03d}_room_{room_id}",
-            metadata=trace_metadata,
-        ):
-            room_scene = _generate_room(
-                room_id=room_id,
-                room_prompt=room_prompt,
-                room_geometry=room_geometry,
-                room_dir=room_dir_path,
-                logger=room_logger,
-                cfg_dict=cfg_dict,
-                start_stage=start_stage,
-                stop_stage=stop_stage,
-                house_layout=house_layout,
-                render_gpu_id=render_gpu_id,
-            )
+        with activate_runtime_tracker(tracker):
+            with trace(
+                workflow_name=f"scene_{scene_id:03d}_room_{room_id}",
+                metadata=trace_metadata,
+            ):
+                room_scene = _generate_room(
+                    room_id=room_id,
+                    room_prompt=room_prompt,
+                    room_geometry=room_geometry,
+                    room_dir=room_dir_path,
+                    logger=room_logger,
+                    cfg_dict=cfg_dict,
+                    start_stage=start_stage,
+                    stop_stage=stop_stage,
+                    house_layout=house_layout,
+                    render_gpu_id=render_gpu_id,
+                    events_path=events_path,
+                )
 
         console_logger.info(f"Worker completed for room '{room_id}'")
 
@@ -1163,6 +1234,7 @@ def _run_parallel_room_generation(
     scene_id: int,
     experiment_run_id: str | None = None,
     render_gpu_id: int | None = None,
+    events_path: str | None = None,
 ) -> dict[str, RoomScene]:
     """Generate rooms in parallel with fault tolerance.
 
@@ -1217,6 +1289,7 @@ def _run_parallel_room_generation(
             "experiment_run_id": experiment_run_id,
             "house_layout_dict": house_layout.to_dict(scene_dir=output_dir),
             "render_gpu_id": render_gpu_id,
+            "events_path": events_path,
         }
         tasks.append((room_id, _generate_room_worker, kwargs))
 
@@ -1581,65 +1654,40 @@ class IndoorSceneGenerationExperiment(BaseExperiment):
         experiment_run_id: str | None = None,
         render_gpu_id: int | None = None,
     ) -> None:
-        """Generate a single scene (static method for parallel execution).
-
-        Pipeline stages run in order:
-        floor_plan → furniture → wall_mounted → ceiling_mounted → manipulands
-        Use config pipeline.start_stage and pipeline.stop_stage to control execution.
-
-        Args:
-            prompt: Scene description.
-            scene_id: Scene identifier.
-            output_dir: Base output directory for the experiment.
-            cfg_dict: Configuration as dictionary.
-            capture_logs: If True, suppress stdout and only write to file.
-            experiment_run_id: Unique ID for this experiment run.
-            render_gpu_id: GPU device ID for Blender rendering. When set, uses
-                bubblewrap to isolate the BlenderServer to this GPU.
-        """
-        # Reset any SDK state inherited via fork (defense in depth).
+        """Generate a single scene (static method for parallel execution)."""
         _reset_inherited_sdk_state()
-
         faulthandler.enable()
 
         scene_generation_start_time = time.time()
-
-        # Create scene directory.
         scene_dir = output_dir / f"scene_{scene_id:03d}"
         scene_dir.mkdir(parents=True, exist_ok=True)
+        events_path = scene_dir / "runtime_events.jsonl"
+        tracker = RuntimeTracker(events_path)
 
-        # Always create log file.
         log_path = scene_dir / "scene.log"
 
-        # Log start message before potential suppression.
         if capture_logs:
             console_logger.info(
-                f"Scene {scene_id:03d} started (logs → {log_path})\n"
-                f"Prompt: {prompt}"
+                f"Scene {scene_id:03d} started (logs → {log_path})\nPrompt: {prompt}"
             )
         else:
             console_logger.info(
                 f"Scene {scene_id:03d} started (debug mode)\nPrompt: {prompt}"
             )
 
-        # Create a logger for this scene.
         logger = ConsoleLogger(output_dir=scene_dir)
 
-        # Get pipeline stage configuration.
         pipeline_cfg = cfg_dict["experiment"]["pipeline"]
         start_stage = pipeline_cfg["start_stage"]
         stop_stage = pipeline_cfg["stop_stage"]
 
-        # Validate stages.
         if start_stage not in PIPELINE_STAGES:
             raise ValueError(
-                f"Invalid start_stage '{start_stage}'. "
-                f"Valid options: {PIPELINE_STAGES}"
+                f"Invalid start_stage '{start_stage}'. Valid options: {PIPELINE_STAGES}"
             )
         if stop_stage not in PIPELINE_STAGES:
             raise ValueError(
-                f"Invalid stop_stage '{stop_stage}'. "
-                f"Valid options: {PIPELINE_STAGES}"
+                f"Invalid stop_stage '{stop_stage}'. Valid options: {PIPELINE_STAGES}"
             )
 
         start_idx = PIPELINE_STAGES.index(start_stage)
@@ -1653,7 +1701,6 @@ class IndoorSceneGenerationExperiment(BaseExperiment):
             f"Pipeline: start_stage='{start_stage}', stop_stage='{stop_stage}'"
         )
 
-        # Handle resume from checkpoint if resume_from_path is specified.
         resume_from_path = pipeline_cfg.get("resume_from_path")
         if resume_from_path and start_stage != "floor_plan":
             source_experiment_dir = Path(resume_from_path)
@@ -1669,7 +1716,6 @@ class IndoorSceneGenerationExperiment(BaseExperiment):
 
         with FileLoggingContext(log_file_path=log_path, suppress_stdout=capture_logs):
             try:
-                # Create trace metadata for this scene.
                 trace_metadata = {
                     "scene_id": f"scene_{scene_id:03d}",
                     "experiment_name": cfg_dict["name"],
@@ -1681,171 +1727,166 @@ class IndoorSceneGenerationExperiment(BaseExperiment):
 
                 console_logger.info(f"Generating scene for prompt: {prompt}")
 
-                # Single trace wraps entire scene generation (floor plan + rooms).
-                with trace(
-                    workflow_name=f"scene_{scene_id:03d}_generation",
-                    metadata=trace_metadata,
-                ):
-                    # Stage 1: Floor plan generation (or load from saved state).
-                    if start_stage == "floor_plan":
-                        # Run floor plan in subprocess to isolate fork-unsafe SDK
-                        # state (SQLiteSession locks, tracing threads). The subprocess
-                        # saves results to disk and exits cleanly before we fork room
-                        # workers.
-                        console_logger.info(
-                            "Generating house layout (in isolated subprocess)"
-                        )
-                        layout_start_time = time.time()
-
-                        # Run floor plan generation in isolated subprocess.
-                        results = run_parallel_isolated(
-                            tasks=[
-                                (
-                                    "floor_plan",
-                                    _generate_floor_plan_worker,
-                                    {
-                                        "prompt": prompt,
-                                        "scene_dir": str(scene_dir),
-                                        "cfg_dict": cfg_dict,
-                                        "experiment_run_id": experiment_run_id,
-                                        "render_gpu_id": render_gpu_id,
-                                    },
+                with activate_runtime_tracker(tracker):
+                    with track_runtime(
+                        category="program",
+                        name="scene.total_generation",
+                        metadata={"scene_id": scene_id},
+                    ):
+                        with trace(
+                            workflow_name=f"scene_{scene_id:03d}_generation",
+                            metadata=trace_metadata,
+                        ):
+                            if start_stage == "floor_plan":
+                                console_logger.info(
+                                    "Generating house layout (in isolated subprocess)"
                                 )
-                            ],
-                            max_workers=1,
-                        )
+                                layout_start_time = time.time()
+                                results = run_parallel_isolated(
+                                    tasks=[
+                                        (
+                                            "floor_plan",
+                                            _generate_floor_plan_worker,
+                                            {
+                                                "prompt": prompt,
+                                                "scene_dir": str(scene_dir),
+                                                "cfg_dict": cfg_dict,
+                                                "experiment_run_id": experiment_run_id,
+                                                "render_gpu_id": render_gpu_id,
+                                                "events_path": str(events_path),
+                                            },
+                                        )
+                                    ],
+                                    max_workers=1,
+                                )
 
-                        # Check for failure.
-                        success, error = results["floor_plan"]
-                        if not success:
-                            raise RuntimeError(f"Floor plan generation failed: {error}")
+                                success, error = results["floor_plan"]
+                                if not success:
+                                    raise RuntimeError(
+                                        f"Floor plan generation failed: {error}"
+                                    )
 
-                        # Load result from disk (subprocess saved it).
-                        house_layout_path = scene_dir / "house_layout.json"
-                        with open(house_layout_path) as f:
-                            house_layout_dict = json.load(f)
-                        house_layout = HouseLayout.from_dict(
-                            house_layout_dict, house_dir=scene_dir
-                        )
+                                house_layout_path = scene_dir / "house_layout.json"
+                                with open(house_layout_path) as f:
+                                    house_layout_dict = json.load(f)
+                                house_layout = HouseLayout.from_dict(
+                                    house_layout_dict, house_dir=scene_dir
+                                )
 
-                        layout_end_time = time.time()
-                        console_logger.info(
-                            f"House layout generated in "
-                            f"{timedelta(seconds=layout_end_time - layout_start_time)}"
-                        )
-                    else:
-                        # Load house layout from saved state.
-                        house_layout_path = scene_dir / "house_layout.json"
-                        if not house_layout_path.exists():
-                            raise FileNotFoundError(
-                                f"Cannot start from '{start_stage}' stage: "
-                                f"house_layout.json not found at {house_layout_path}. "
-                                "Run with start_stage='floor_plan' first."
+                                layout_end_time = time.time()
+                                console_logger.info(
+                                    "House layout generated in "
+                                    f"{timedelta(seconds=layout_end_time - layout_start_time)}"
+                                )
+                            else:
+                                house_layout_path = scene_dir / "house_layout.json"
+                                if not house_layout_path.exists():
+                                    raise FileNotFoundError(
+                                        f"Cannot start from '{start_stage}' stage: "
+                                        f"house_layout.json not found at {house_layout_path}. "
+                                        "Run with start_stage='floor_plan' first."
+                                    )
+                                console_logger.info(
+                                    f"Loading house layout from {house_layout_path}"
+                                )
+                                with open(house_layout_path) as f:
+                                    house_layout_dict = json.load(f)
+                                house_layout = HouseLayout.from_dict(
+                                    house_layout_dict, house_dir=scene_dir
+                                )
+
+                            if stop_stage == "floor_plan":
+                                console_logger.info(
+                                    "Stopping after floor_plan stage as configured"
+                                )
+                                console_logger.info(
+                                    "Scene generation completed successfully in "
+                                    f"{timedelta(seconds=time.time() - scene_generation_start_time)}"
+                                )
+                                return
+
+                            room_start_stage = (
+                                "furniture" if start_stage == "floor_plan" else start_stage
                             )
-                        console_logger.info(
-                            f"Loading house layout from {house_layout_path}"
-                        )
-                        with open(house_layout_path) as f:
-                            house_layout_dict = json.load(f)
-                        house_layout = HouseLayout.from_dict(
-                            house_layout_dict, house_dir=scene_dir
-                        )
+                            room_stop_stage = stop_stage
 
-                    # Check if we should stop after floor_plan stage.
-                    if stop_stage == "floor_plan":
-                        console_logger.info(
-                            "Stopping after floor_plan stage as configured"
-                        )
-                        console_logger.info(
-                            "Scene generation completed successfully in "
-                            f"{timedelta(seconds=time.time() - scene_generation_start_time)}"
-                        )
-                        return
+                            parallel_rooms = pipeline_cfg["parallel_rooms"]
+                            max_parallel_rooms = pipeline_cfg["max_parallel_rooms"]
+                            num_rooms = len(house_layout.room_ids)
+                            use_parallel = (
+                                parallel_rooms and max_parallel_rooms > 1 and num_rooms > 1
+                            )
 
-                    # Stages 2-4: Furniture, wall objects, and manipulands (per-room).
-                    # Determine room-level start/stop stages.
-                    room_start_stage = (
-                        "furniture" if start_stage == "floor_plan" else start_stage
-                    )
-                    room_stop_stage = stop_stage
+                            if use_parallel:
+                                rooms = _run_parallel_room_generation(
+                                    house_layout=house_layout,
+                                    output_dir=scene_dir,
+                                    cfg_dict=cfg_dict,
+                                    start_stage=room_start_stage,
+                                    stop_stage=room_stop_stage,
+                                    max_workers=max_parallel_rooms,
+                                    scene_id=scene_id,
+                                    experiment_run_id=experiment_run_id,
+                                    render_gpu_id=render_gpu_id,
+                                    events_path=str(events_path),
+                                )
+                            else:
+                                rooms = _run_sequential_room_generation(
+                                    house_layout=house_layout,
+                                    logger=logger,
+                                    cfg_dict=cfg_dict,
+                                    start_stage=room_start_stage,
+                                    stop_stage=room_stop_stage,
+                                    render_gpu_id=render_gpu_id,
+                                    events_path=str(events_path),
+                                )
 
-                    # Generate rooms (parallel or sequential based on config).
-                    parallel_rooms = pipeline_cfg["parallel_rooms"]
-                    max_parallel_rooms = pipeline_cfg["max_parallel_rooms"]
-                    num_rooms = len(house_layout.room_ids)
+                            house_scene = HouseScene(layout=house_layout, rooms=rooms)
+                            snapshots = [
+                                ("combined_house_after_furniture", [ObjectType.FURNITURE]),
+                                (
+                                    "combined_house_after_wall_objects",
+                                    [ObjectType.FURNITURE, ObjectType.WALL_MOUNTED],
+                                ),
+                                (
+                                    "combined_house_after_ceiling",
+                                    [
+                                        ObjectType.FURNITURE,
+                                        ObjectType.WALL_MOUNTED,
+                                        ObjectType.CEILING_MOUNTED,
+                                    ],
+                                ),
+                                ("combined_house", None),
+                            ]
 
-                    # Only use parallel if enabled, max_workers > 1, and multiple rooms.
-                    use_parallel = (
-                        parallel_rooms and max_parallel_rooms > 1 and num_rooms > 1
-                    )
+                            stage_to_count = {
+                                "furniture": 1,
+                                AgentType.WALL_MOUNTED.value: 2,
+                                AgentType.CEILING_MOUNTED.value: 3,
+                            }
+                            snapshot_count = stage_to_count.get(stop_stage, len(snapshots))
 
-                    if use_parallel:
-                        rooms = _run_parallel_room_generation(
-                            house_layout=house_layout,
-                            output_dir=scene_dir,
-                            cfg_dict=cfg_dict,
-                            start_stage=room_start_stage,
-                            stop_stage=room_stop_stage,
-                            max_workers=max_parallel_rooms,
-                            scene_id=scene_id,
-                            experiment_run_id=experiment_run_id,
-                            render_gpu_id=render_gpu_id,
-                        )
-                    else:
-                        rooms = _run_sequential_room_generation(
-                            house_layout=house_layout,
-                            logger=logger,
-                            cfg_dict=cfg_dict,
-                            start_stage=room_start_stage,
-                            stop_stage=room_stop_stage,
-                            render_gpu_id=render_gpu_id,
-                        )
+                            for name, types in snapshots[:snapshot_count]:
+                                with track_runtime(
+                                    category="program",
+                                    name=f"scene.assemble.{name}",
+                                    metadata={"scene_id": scene_id},
+                                ):
+                                    house_scene.assemble(
+                                        cfg=cfg_dict,
+                                        output_name=name,
+                                        include_object_types=types,
+                                    )
 
-                    # Build HouseScene from generated rooms.
-                    house_scene = HouseScene(layout=house_layout, rooms=rooms)
-
-                    # Assemble house with intermediate snapshots filtered by object type.
-                    # Each snapshot includes objects from completed stages only.
-                    # Note: Thin coverings keep their agent's object_type (FURNITURE,
-                    # WALL_MOUNTED, MANIPULAND) so they're included automatically.
-                    snapshots = [
-                        ("combined_house_after_furniture", [ObjectType.FURNITURE]),
-                        (
-                            "combined_house_after_wall_objects",
-                            [ObjectType.FURNITURE, ObjectType.WALL_MOUNTED],
-                        ),
-                        (
-                            "combined_house_after_ceiling",
-                            [
-                                ObjectType.FURNITURE,
-                                ObjectType.WALL_MOUNTED,
-                                ObjectType.CEILING_MOUNTED,
-                            ],
-                        ),
-                        ("combined_house", None),  # Final: all objects.
-                    ]
-
-                    # Map stop_stage to number of snapshots to create.
-                    stage_to_count = {
-                        "furniture": 1,
-                        AgentType.WALL_MOUNTED.value: 2,
-                        AgentType.CEILING_MOUNTED.value: 3,
-                    }
-                    snapshot_count = stage_to_count.get(stop_stage, len(snapshots))
-
-                    for name, types in snapshots[:snapshot_count]:
-                        house_scene.assemble(
-                            cfg=cfg_dict, output_name=name, include_object_types=types
-                        )
-
-                    console_logger.info(
-                        "Scene generation completed successfully in "
-                        f"{timedelta(seconds=time.time() - scene_generation_start_time)}"
-                    )
-
+                            console_logger.info(
+                                "Scene generation completed successfully in "
+                                f"{timedelta(seconds=time.time() - scene_generation_start_time)}"
+                            )
             except Exception as e:
                 console_logger.error(f"Scene generation failed: {e}")
                 raise
+            finally:
+                write_runtime_reports(scene_dir=scene_dir, events_path=events_path)
 
     def _run_serial_generation(
         self,

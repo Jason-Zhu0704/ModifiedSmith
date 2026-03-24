@@ -104,7 +104,10 @@ class BaseFurnitureAgent(ABC):
             raise
 
         service_tier = getattr(self.cfg.openai, "service_tier", None)
-        self.vlm_service = VLMService(service_tier=service_tier)
+        self.vlm_service = VLMService(
+            service_tier=service_tier,
+            service_cfg=getattr(self.cfg, "services", None),
+        )
 
         self.asset_manager = AssetManager(
             logger=logger,

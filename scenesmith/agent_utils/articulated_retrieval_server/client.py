@@ -8,6 +8,8 @@ from typing import Iterator
 
 import requests
 
+from scenesmith.utils.runtime_tracking import track_runtime
+
 from .dataclasses import (
     ArticulatedRetrievalServerRequest,
     ArticulatedRetrievalServerResponse,
@@ -100,8 +102,13 @@ class ArticulatedRetrievalClient:
                 request_data = [req.to_dict() for req in retrieval_requests]
 
                 # Send streaming request.
-                http_response = self.session.post(
-                    f"{self.base_url}/retrieve_objects",
+                with track_runtime(
+                    category="service",
+                    name="articulated_retrieval.http.retrieve_objects",
+                    metadata={"base_url": self.base_url, "requests": len(request_data)},
+                ):
+                    http_response = self.session.post(
+                        f"{self.base_url}/retrieve_objects",
                     json=request_data,
                     stream=True,
                     timeout=(10, timeout_s),  # 10s connect, timeout_s read.
@@ -197,7 +204,12 @@ class ArticulatedRetrievalClient:
             or times out.
         """
         try:
-            response = self.session.get(f"{self.base_url}/health", timeout=5)
+            with track_runtime(
+                category="service",
+                name="articulated_retrieval.http.health",
+                metadata={"base_url": self.base_url},
+            ):
+                response = self.session.get(f"{self.base_url}/health", timeout=5)
             response.raise_for_status()
             return True
         except Exception as e:
