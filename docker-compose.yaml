@@ -17,6 +17,16 @@ services:
       - GOOGLE_API_KEY=${SCENESMITH_GEMINI_API_KEY:-}
       - OPENAI_TRACING_KEY=${OPENAI_TRACING_KEY:-}
       - NVIDIA_VISIBLE_DEVICES=all
+      # Persist HuggingFace cache across container runs to prevent repeated
+      # model bootstrap failures in geometry workers (e.g., MoGe preload).
+      - HF_HOME=/app/data/hf_cache
+      - HUGGINGFACE_HUB_CACHE=/app/data/hf_cache/hub
+      - TRANSFORMERS_CACHE=/app/data/hf_cache/transformers
+      - HF_HUB_ETAG_TIMEOUT=${HF_HUB_ETAG_TIMEOUT:-60}
+      - HF_HUB_DOWNLOAD_TIMEOUT=${HF_HUB_DOWNLOAD_TIMEOUT:-1200}
+      - HF_HUB_DISABLE_XET=${HF_HUB_DISABLE_XET:-1}
+      - HF_TOKEN=${HF_TOKEN:-}
+      - HUGGINGFACE_HUB_TOKEN=${HF_TOKEN:-}
     volumes:
       # Data directories (download on host, mount into container).
       - ./data:/app/data
