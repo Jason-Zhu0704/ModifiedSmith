@@ -7,6 +7,7 @@ with rooms, doors, windows, and materials, then generates the geometry.
 import copy
 import json
 import logging
+import os
 import shutil
 
 from pathlib import Path
@@ -352,18 +353,43 @@ class StatefulFloorPlanAgent(BaseStatefulAgent, BaseFloorPlanAgent):
 
         # Run critic.
         # Critic will call observe_scene, render_ascii, and validate tools.
-        result = await Runner.run(
-            starting_agent=self.critic,
-            input=critique_instruction,
-            session=self.critic_session,
-            max_turns=self.cfg.agents.critic_agent.max_turns,
-            run_config=self._create_run_config(),
-        )
-        log_agent_usage(result=result, agent_name="CRITIC (FLOOR PLAN)")
+        try:
+            result = await Runner.run(
+                starting_agent=self.critic,
+                input=critique_instruction,
+                session=self.critic_session,
+                max_turns=self.cfg.agents.critic_agent.max_turns,
+                run_config=self._create_run_config(),
+            )
+            log_agent_usage(result=result, agent_name="CRITIC (FLOOR PLAN)")
+        except Exception as exc:
+            console_logger.warning(
+                "Floor-plan critique run failed (%s). Skipping critique update "
+                "and continuing with current layout.",
+                exc,
+            )
+            return (
+                "Critique unavailable due output-parsing/runtime error. "
+                "Continue with current layout."
+            )
         vision_tools = self._get_vision_tools()
 
         # Parse structured output.
-        response = result.final_output_as(FloorPlanCritiqueWithScores)
+        try:
+            response = self._parse_structured_output_with_fallback(
+                result=result,
+                output_type=FloorPlanCritiqueWithScores,
+            )
+        except Exception as exc:
+            console_logger.warning(
+                "Floor-plan critique parsing failed (%s). Skipping critique update "
+                "and continuing with current layout.",
+                exc,
+            )
+            return (
+                "Critique unavailable due structured-output parsing error. "
+                "Continue with current layout."
+            )
 
         # Log critique.
         log_agent_response(response=response.critique, agent_name="CRITIC")
@@ -679,23 +705,28 @@ class StatefulFloorPlanAgent(BaseStatefulAgent, BaseFloorPlanAgent):
                 response=result.final_output, agent_name="PLANNER (FLOOR PLAN)"
             )
 
-        # Final critique.
-        # Check if scene changed since last checkpoint to avoid redundant critique.
-        current_scene_hash = self.layout.content_hash()
-
-        if (
-            self.checkpoint_scene_hash is not None
-            and current_scene_hash == self.checkpoint_scene_hash
-        ):
+        if self.cfg.max_critique_rounds <= 0:
             console_logger.info(
-                "Scene unchanged since last critique, skipping final critique"
+                "max_critique_rounds=0, skipping final floor-plan critique"
             )
         else:
-            console_logger.info(
-                "Scene changed since last critique, computing final critique"
-            )
-            # Pass update_checkpoint=False to preserve N-1 checkpoint for reset check.
-            await self._request_critique_impl(update_checkpoint=False)
+            # Final critique.
+            # Check if scene changed since last checkpoint to avoid redundant critique.
+            current_scene_hash = self.layout.content_hash()
+
+            if (
+                self.checkpoint_scene_hash is not None
+                and current_scene_hash == self.checkpoint_scene_hash
+            ):
+                console_logger.info(
+                    "Scene unchanged since last critique, skipping final critique"
+                )
+            else:
+                console_logger.info(
+                    "Scene changed since last critique, computing final critique"
+                )
+                # Pass update_checkpoint=False to preserve N-1 checkpoint for reset check.
+                await self._request_critique_impl(update_checkpoint=False)
 
         # Validate final scene against thresholds and potentially reset.
         await self._finalize_scene_and_scores()
@@ -775,6 +806,21 @@ class StatefulFloorPlanAgent(BaseStatefulAgent, BaseFloorPlanAgent):
         console_logger.info(f"Floor plan directive saved to: {directive_path}")
 
         # Convert DMD to .blend for external use.
+        # In headless environments without DISPLAY, this export can fail due to
+        # OpenGL/X requirements in Drake's export path. Keep pipeline running and
+        # retain .dmd.yaml as the authoritative output.
+        force_blend_export = os.getenv("SCENESMITH_FORCE_BLEND_EXPORT", "").lower() in {
+            "1",
+            "true",
+            "yes",
+        }
+        if os.getenv("DISPLAY") is None and not force_blend_export:
+            console_logger.warning(
+                "DISPLAY is not set; skipping floor_plan.blend export. "
+                "Set SCENESMITH_FORCE_BLEND_EXPORT=1 to force export."
+            )
+            return
+
         # Pass house_dir as scene_dir for package://scene/ resolution.
         blend_path = final_dir / "floor_plan.blend"
         save_directive_as_blend(

@@ -8,6 +8,7 @@ subclass-defined tools.
 
 import copy
 import logging
+import re
 import shutil
 
 from abc import ABC, abstractmethod
@@ -28,8 +29,8 @@ from agents import (
 )
 from agents.memory.session import Session
 from omegaconf import DictConfig
-from openai import Timeout
 from openai.types.shared import Reasoning
+from pydantic import TypeAdapter
 
 from scenesmith.agent_utils.action_logger import log_scene_action
 from scenesmith.agent_utils.checkpoint_state import initialize_checkpoint_attributes
@@ -192,13 +193,17 @@ class BaseStatefulAgent(ABC):
         # Add timeout if configured (api_timeout is optional).
         if hasattr(self.cfg, "api_timeout"):
             timeout_cfg = self.cfg.api_timeout
-            timeout = Timeout(
-                connect=timeout_cfg.connect,
-                read=timeout_cfg.read,
-                write=timeout_cfg.write,
-                pool=timeout_cfg.pool,
+            # Use a scalar timeout value for compatibility across model providers and
+            # OpenAI Agents transports (responses/chat_completions).
+            timeout_s = float(
+                max(
+                    timeout_cfg.connect,
+                    timeout_cfg.read,
+                    timeout_cfg.write,
+                    timeout_cfg.pool,
+                )
             )
-            extra_args["timeout"] = timeout
+            extra_args["timeout"] = timeout_s
 
         # Add service_tier if configured (non-null/non-empty).
         service_tier = getattr(self.cfg.openai, "service_tier", None)
@@ -278,6 +283,8 @@ class BaseStatefulAgent(ABC):
             Configured critic agent with domain-specific CritiqueWithScores type.
         """
         critic_config = self.cfg.agents.critic_agent
+        # Keep concrete output type for resilient parsing in critique runners.
+        self._critic_output_type = output_type
         return Agent(
             name=critic_config.name,
             model=self.cfg.openai.model,
@@ -686,6 +693,11 @@ class BaseStatefulAgent(ABC):
             Returns:
                 Critic's detailed evaluation with specific improvement suggestions.
             """
+            if self.cfg.max_critique_rounds <= 0:
+                return (
+                    "Critique rounds are disabled (max_critique_rounds=0). "
+                    "Skip critique and complete the task once requirements are met."
+                )
             return await self._request_critique_impl()
 
         @function_tool
@@ -702,18 +714,20 @@ class BaseStatefulAgent(ABC):
             Returns:
                 Designer's report of what was changed.
             """
+            if self.cfg.max_critique_rounds <= 0:
+                return (
+                    "Design-change rounds are disabled (max_critique_rounds=0). "
+                    "No critique-driven changes were applied."
+                )
             return await self._request_design_change_impl(instruction)
 
-        tools: list[FunctionTool] = [request_initial_design]
-
-        # Only add critique-related tools if critique rounds are enabled.
-        # This prevents the planner from accidentally calling critique tools
-        # when max_critique_rounds is 0.
-        if self.cfg.max_critique_rounds > 0:
-            reset_scene_to_checkpoint = self._create_reset_checkpoint_tool()
-            tools.extend(
-                [request_critique, request_design_change, reset_scene_to_checkpoint]
-            )
+        reset_scene_to_checkpoint = self._create_reset_checkpoint_tool()
+        tools: list[FunctionTool] = [
+            request_initial_design,
+            request_critique,
+            request_design_change,
+            reset_scene_to_checkpoint,
+        ]
 
         # Add placement style tool for placement agents (not floor plan).
         if self._is_placement_agent:
@@ -748,6 +762,66 @@ class BaseStatefulAgent(ABC):
             Dictionary of extra kwargs to pass to prompt rendering.
         """
         return {}
+
+    @staticmethod
+    def _extract_json_object_from_text(text: str) -> str | None:
+        """Extract the first balanced JSON object from free-form text."""
+        # Prefer fenced json blocks when present.
+        fenced = re.search(r"```json\s*(\{.*?\})\s*```", text, flags=re.DOTALL)
+        if fenced:
+            return fenced.group(1).strip()
+
+        # Fallback: find first balanced object by brace counting.
+        start = text.find("{")
+        if start < 0:
+            return None
+        depth = 0
+        in_string = False
+        escaped = False
+        for i in range(start, len(text)):
+            ch = text[i]
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == '"':
+                    in_string = False
+                continue
+            if ch == '"':
+                in_string = True
+                continue
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    return text[start : i + 1].strip()
+        return None
+
+    def _parse_structured_output_with_fallback(
+        self, result: RunResult, output_type: type[Any]
+    ) -> Any:
+        """Parse structured output, with fallback for malformed text wrappers."""
+        try:
+            return result.final_output_as(output_type)
+        except Exception:
+            raw_output = getattr(result, "final_output", None)
+            if raw_output is None:
+                raise
+
+            adapter = TypeAdapter(output_type)
+
+            if isinstance(raw_output, dict):
+                return adapter.validate_python(raw_output)
+
+            if not isinstance(raw_output, str):
+                raise
+
+            json_candidate = self._extract_json_object_from_text(raw_output)
+            if not json_candidate:
+                raise
+            return adapter.validate_json(json_candidate)
 
     async def _request_critique_impl(self, update_checkpoint: bool = True) -> str:
         """Implementation for critique request.
@@ -789,17 +863,31 @@ class BaseStatefulAgent(ABC):
             placement_style=self.placement_style,
             **extra_kwargs,
         )
-        result = await Runner.run(
-            starting_agent=self.critic,
-            input=critique_instruction,
-            session=self.critic_session,
-            max_turns=self.cfg.agents.critic_agent.max_turns,
-            run_config=self._create_run_config(),
-        )
-        log_agent_usage(result=result, agent_name="CRITIC")
+        try:
+            result = await Runner.run(
+                starting_agent=self.critic,
+                input=critique_instruction,
+                session=self.critic_session,
+                max_turns=self.cfg.agents.critic_agent.max_turns,
+                run_config=self._create_run_config(),
+            )
+            log_agent_usage(result=result, agent_name="CRITIC")
 
-        # Parse structured output.
-        response = result.final_output_as(CritiqueWithScores)
+            # Parse structured output.
+            response = self._parse_structured_output_with_fallback(
+                result=result,
+                output_type=self._critic_output_type,
+            )
+        except Exception as exc:
+            console_logger.warning(
+                "Critique run failed (%s). Skipping critique update and "
+                "continuing with current scene.",
+                exc,
+            )
+            return (
+                "Critique unavailable due output-parsing/runtime error. "
+                "Continue with current scene."
+            )
 
         # Log critique text and scores to console.
         log_agent_response(response=response.critique, agent_name="CRITIC")
