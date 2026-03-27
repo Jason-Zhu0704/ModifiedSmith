@@ -293,7 +293,10 @@ class BaseStatefulAgent(ABC):
                 prompt_enum=prompt_enum,
                 **prompt_kwargs,
             ),
-            output_type=output_type,
+            # Do not enforce strict SDK output_type at run-time.
+            # Some providers occasionally emit non-JSON wrappers (e.g. markdown or
+            # stray tool tags), which would make Runner.run fail before we can apply
+            # resilient local parsing fallbacks.
             # Force observe_scene tool call first to ensure visual context.
             model_settings=self._get_model_settings(
                 settings_key="critic", tool_choice="observe_scene"
