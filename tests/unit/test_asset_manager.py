@@ -169,6 +169,17 @@ class TestAssetManager(unittest.TestCase):
         self.assertEqual(self.asset_manager.output_dir, self.output_dir)
         self.assertEqual(self.asset_manager.logger, self.mock_logger)
 
+    def test_create_asset_paths_uses_unique_names_for_duplicate_short_names(self):
+        """Duplicate short_names in one batch should not reuse filesystem paths."""
+        asset_paths = self.asset_manager._create_asset_paths(
+            object_descriptions=["Nightstand A", "Nightstand B"],
+            short_names=["nightstand", "nightstand"],
+        )
+
+        self.assertEqual(len(asset_paths), 2)
+        self.assertNotEqual(asset_paths[0].geometry_path, asset_paths[1].geometry_path)
+        self.assertNotEqual(asset_paths[0].sdf_dir, asset_paths[1].sdf_dir)
+
     @patch("scenesmith.agent_utils.asset_manager.scale_mesh_uniformly_to_dimensions")
     @patch("pathlib.Path.glob")
     @patch(

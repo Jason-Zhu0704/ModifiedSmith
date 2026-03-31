@@ -13,6 +13,14 @@ MAX_ATTEMPTS="${MAX_ATTEMPTS:-20}"
 ATTEMPT_TIMEOUT_SEC="${ATTEMPT_TIMEOUT_SEC:-1800}"
 SLEEP_SEC="${SLEEP_SEC:-20}"
 MIN_BYTES="${MIN_BYTES:-3000000000}" # ~3GB minimum sanity check
+SENTINEL_HOST_PATH="${SENTINEL_HOST_PATH:-data/hf_cache/prewarm/dfn5b_open_clip.ok}"
+FORCE_PREWARM="${FORCE_PREWARM:-0}"
+
+if [[ "${FORCE_PREWARM}" != "1" && -s "${SENTINEL_HOST_PATH}" ]]; then
+  echo "[dfn5b] sentinel found at ${SENTINEL_HOST_PATH}; skip prewarm"
+  echo "[dfn5b] use FORCE_PREWARM=1 to force revalidation/rewrite"
+  exit 0
+fi
 
 echo "[dfn5b] start prewarm"
 echo "[dfn5b] cache=${ROOT_DIR}/data/hf_cache"
@@ -30,11 +38,14 @@ while [[ "${attempt}" -le "${MAX_ATTEMPTS}" ]]; do
     -e HF_HUB_DOWNLOAD_TIMEOUT="${HF_HUB_DOWNLOAD_TIMEOUT:-1200}" \
     -e HF_HUB_DISABLE_XET="${HF_HUB_DISABLE_XET:-1}" \
     -e MIN_BYTES="${MIN_BYTES}" \
+    -e SENTINEL_PATH="/app/${SENTINEL_HOST_PATH}" \
     -e HF_TOKEN="${HF_TOKEN:-}" \
     -e HUGGINGFACE_HUB_TOKEN="${HF_TOKEN:-}" \
     scenesmith \
     /app/.venv/bin/python -u - <<'PY'
+import json
 import os
+from datetime import datetime, timezone
 
 from huggingface_hub import hf_hub_download
 import open_clip
@@ -62,6 +73,23 @@ print("[dfn5b] validating open_clip load")
 open_clip.create_model_and_transforms(
     "ViT-H-14-378-quickgelu", pretrained="dfn5b", device="cpu"
 )
+
+sentinel_path = os.getenv("SENTINEL_PATH", "/app/data/hf_cache/prewarm/dfn5b_open_clip.ok")
+os.makedirs(os.path.dirname(sentinel_path), exist_ok=True)
+with open(sentinel_path, "w", encoding="utf-8") as f:
+    json.dump(
+        {
+            "repo_id": repo_id,
+            "filename": filename,
+            "cached_path": path,
+            "size_bytes": size,
+            "updated_at_utc": datetime.now(timezone.utc).isoformat(),
+        },
+        f,
+        ensure_ascii=True,
+        indent=2,
+    )
+print(f"[dfn5b] wrote sentinel: {sentinel_path}")
 print("[dfn5b] SUCCESS")
 PY
   then

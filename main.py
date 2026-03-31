@@ -27,6 +27,11 @@ from scenesmith.utils.print_utils import cyan
 console_logger = logging.getLogger(__name__)
 
 
+def _is_env_flag_enabled(var_name: str) -> bool:
+    """Return True when env var is set to a truthy value."""
+    return os.environ.get(var_name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _bridge_openai_envs() -> None:
     """Bridge SceneSmith VLM env vars to OpenAI SDK env vars when missing."""
     if not os.environ.get("OPENAI_API_KEY"):
@@ -42,6 +47,34 @@ def _bridge_openai_envs() -> None:
             console_logger.info("Bridged SCENESMITH_VLM_BASE_URL -> OPENAI_BASE_URL")
 
 
+def _apply_no_generation_overrides(cfg: DictConfig) -> None:
+    """Force retrieval-only asset pipeline when requested by environment."""
+    if not _is_env_flag_enabled("SCENESMITH_DISABLE_GENERATION"):
+        return
+
+    with open_dict(cfg):
+        services_cfg = getattr(cfg, "services", None)
+        if services_cfg and "asset_manager" in services_cfg:
+            services_cfg.asset_manager.general_asset_source = "hssd"
+            services_cfg.asset_manager.backend = "none"
+
+        for agent_name in (
+            "furniture_agent",
+            "manipuland_agent",
+            "wall_agent",
+            "ceiling_agent",
+        ):
+            agent_cfg = getattr(cfg, agent_name, None)
+            if agent_cfg and "asset_manager" in agent_cfg:
+                agent_cfg.asset_manager.general_asset_source = "hssd"
+                agent_cfg.asset_manager.backend = "none"
+
+    console_logger.warning(
+        "SCENESMITH_DISABLE_GENERATION is enabled: forcing retrieval-only "
+        "assets (general_asset_source=hssd, backend=none)."
+    )
+
+
 def run_local(cfg: DictConfig):
     # Delay some imports in case they are not needed in non-local envs for submission.
     from scenesmith.experiments import build_experiment
@@ -51,6 +84,7 @@ def run_local(cfg: DictConfig):
     # Resolve the config.
     register_resolvers()
     OmegaConf.resolve(cfg)
+    _apply_no_generation_overrides(cfg)
 
     # Get yaml names.
     hydra_cfg = hydra.core.hydra_config.HydraConfig.get()
@@ -131,8 +165,45 @@ def run(cfg: DictConfig):
 
     _bridge_openai_envs()
 
-    # Configure separate tracing API key if provided.
+    # Configure OpenAI Agents SDK transport API for provider compatibility.
+    # Example: Zhipu GLM OpenAI-compatible endpoint supports chat completions.
+    from agents import set_default_openai_api, set_default_openai_client
+    from openai import AsyncOpenAI
+
+    from scenesmith.utils.service_config import (
+        resolve_openai_api_mode,
+        resolve_openai_connection,
+    )
+
+    vlm_conn = resolve_openai_connection(
+        service_cfg=getattr(cfg, "services", None), section="vlm"
+    )
+    if not vlm_conn["api_key"]:
+        raise ValueError(
+            f"{vlm_conn['api_key_env']} (or OPENAI_API_KEY) is required for VLM agents"
+        )
+
+    client_kwargs = {"api_key": str(vlm_conn["api_key"])}
+    if vlm_conn["base_url"]:
+        client_kwargs["base_url"] = str(vlm_conn["base_url"])
+
     tracing_api_key = os.environ.get("OPENAI_TRACING_KEY")
+    set_default_openai_client(
+        AsyncOpenAI(**client_kwargs),
+        use_for_tracing=not tracing_api_key,
+    )
+    console_logger.info(
+        "Configured OpenAI Agents default client: "
+        f"base_url={vlm_conn['base_url']} api_key_env={vlm_conn['api_key_env']}"
+    )
+
+    openai_api_mode = resolve_openai_api_mode(
+        service_cfg=getattr(cfg, "services", None), section="vlm"
+    )
+    set_default_openai_api(openai_api_mode)  # "responses" | "chat_completions"
+    console_logger.info(f"Configured OpenAI Agents API mode: {openai_api_mode}")
+
+    # Configure separate tracing API key if provided.
     if tracing_api_key:
         from agents.tracing import set_tracing_export_api_key
 

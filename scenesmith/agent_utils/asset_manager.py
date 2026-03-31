@@ -1,5 +1,7 @@
 import logging
+import os
 import re
+import secrets
 import shutil
 import time
 
@@ -1582,9 +1584,11 @@ class AssetManager:
             # Use sanitized short name for file naming.
             safe_name = self._sanitize_filename(short_name)
             timestamp = int(time.time())
+            nonce = secrets.token_hex(2)
             # Add index suffix to avoid path collisions when the same short_name
             # appears multiple times in a single batch (e.g., two nightstands).
-            base_name = f"{safe_name}_{timestamp}_{idx:02d}"
+            # Include a short nonce to avoid same-second collisions across batches.
+            base_name = f"{safe_name}_{timestamp}_{idx:02d}_{nonce}"
 
             asset_paths.append(
                 AssetPathConfig(
@@ -1845,12 +1849,23 @@ class AssetManager:
         )
 
         # Remove floaters from mesh before VLM analysis.
-        console_logger.info("Removing disconnected mesh floaters")
-        remove_mesh_floaters(
-            mesh_path=gltf_path,
-            output_path=gltf_path,
-            distance_threshold=self.cfg.asset_manager.floater_distance_threshold,
-        )
+        # Some large/complex assets can trigger excessive memory usage in trimesh split.
+        # Allow skipping via env for stability in constrained environments.
+        skip_floater_removal = os.environ.get(
+            "SCENESMITH_SKIP_FLOATER_REMOVAL", ""
+        ).lower() in {"1", "true", "yes"}
+        if skip_floater_removal:
+            console_logger.warning(
+                "Skipping mesh floater removal because "
+                "SCENESMITH_SKIP_FLOATER_REMOVAL is enabled."
+            )
+        else:
+            console_logger.info("Removing disconnected mesh floaters")
+            remove_mesh_floaters(
+                mesh_path=gltf_path,
+                output_path=gltf_path,
+                distance_threshold=self.cfg.asset_manager.floater_distance_threshold,
+            )
 
         # VLM analysis for orientation, material, mass.
         # Create debug directory for saving multi-view physics analysis images.
