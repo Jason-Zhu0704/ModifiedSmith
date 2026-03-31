@@ -46,7 +46,9 @@ image_generation:
 # Set to "generated" to use text-to-3D backends.
 asset_manager:
   general_asset_source: "hssd"
-  backend: "sam3d"
+  # Generation backend is ignored when using existing assets ("hssd").
+  # Keep as "none" to make "no 3D generation" explicit.
+  backend: "none"
 
 # Shared experiment-side service endpoints.
 servers:

@@ -1576,11 +1576,15 @@ class AssetManager:
             List of AssetPathConfig objects containing asset paths and metadata.
         """
         asset_paths = []
-        for desc, short_name in zip(object_descriptions, short_names):
+        for idx, (desc, short_name) in enumerate(
+            zip(object_descriptions, short_names)
+        ):
             # Use sanitized short name for file naming.
             safe_name = self._sanitize_filename(short_name)
             timestamp = int(time.time())
-            base_name = f"{safe_name}_{timestamp}"
+            # Add index suffix to avoid path collisions when the same short_name
+            # appears multiple times in a single batch (e.g., two nightstands).
+            base_name = f"{safe_name}_{timestamp}_{idx:02d}"
 
             asset_paths.append(
                 AssetPathConfig(
