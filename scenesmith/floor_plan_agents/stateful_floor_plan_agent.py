@@ -5,6 +5,7 @@ with rooms, doors, windows, and materials, then generates the geometry.
 """
 
 import copy
+import asyncio
 import json
 import logging
 import os
@@ -229,6 +230,57 @@ class StatefulFloorPlanAgent(BaseStatefulAgent, BaseFloorPlanAgent):
         )
 
         return list(vision_tools.tools.values()) + [floor_plan_tools.tools["validate"]]
+
+    @staticmethod
+    def _is_provider_tool_call_name_error(exc: Exception) -> bool:
+        """Detect malformed provider tool-calls with null function names."""
+        message = str(exc)
+        return (
+            "ResponseFunctionToolCall" in message
+            and "Input should be a valid string" in message
+            and "name" in message
+        )
+
+    async def _run_planner_with_retry(self, instruction: str) -> RunResult:
+        """Run planner with targeted retry for provider tool-call parse glitches."""
+        max_attempts = max(
+            1, int(os.environ.get("SCENESMITH_FLOOR_PLAN_RUNNER_MAX_ATTEMPTS", "3"))
+        )
+        base_delay_s = float(
+            os.environ.get("SCENESMITH_FLOOR_PLAN_RUNNER_RETRY_DELAY_S", "2.0")
+        )
+
+        last_exc: Exception | None = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                return await Runner.run(
+                    starting_agent=self.planner,
+                    input=instruction,
+                    max_turns=self.cfg.agents.planner_agent.max_turns,
+                    run_config=self._create_run_config(),
+                )
+            except Exception as exc:
+                last_exc = exc
+                if (
+                    not self._is_provider_tool_call_name_error(exc)
+                    or attempt >= max_attempts
+                ):
+                    raise
+
+                delay_s = base_delay_s * attempt
+                console_logger.warning(
+                    "Planner run failed with provider tool-call format error "
+                    "(attempt %s/%s). Retrying in %.1fs. Error: %s",
+                    attempt,
+                    max_attempts,
+                    delay_s,
+                    exc,
+                )
+                await asyncio.sleep(delay_s)
+
+        if last_exc is not None:
+            raise last_exc
+        raise RuntimeError("Planner run failed with unknown error")
 
     def _create_designer_agent(self, tools: list[FunctionTool]) -> Agent:
         """Create the designer agent.
@@ -692,12 +744,7 @@ class StatefulFloorPlanAgent(BaseStatefulAgent, BaseFloorPlanAgent):
         )
 
         # Run the floor plan design workflow.
-        result: RunResult = await Runner.run(
-            starting_agent=self.planner,
-            input=runner_instruction,
-            max_turns=self.cfg.agents.planner_agent.max_turns,
-            run_config=self._create_run_config(),
-        )
+        result: RunResult = await self._run_planner_with_retry(runner_instruction)
         log_agent_usage(result=result, agent_name="PLANNER (FLOOR PLAN)")
 
         if result.final_output:
