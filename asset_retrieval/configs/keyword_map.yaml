@@ -1,0 +1,28 @@
+- pattern: "\\bnight\\s*stand\\b|\\bnightstand\\b|\\bbedside table\\b"
+  category: nightstand
+- pattern: "\\bqueen bed\\b|\\bking bed\\b|\\bbed\\b|\\bheadboard\\b|\\bmattress\\b"
+  category: bed
+- pattern: "\\bwriting desk\\b|\\bcomputer desk\\b|\\bdesk\\b"
+  category: desk
+- pattern: "\\boffice chair\\b|\\bswivel chair\\b"
+  category: office_chair
+- pattern: "\\barmchair\\b"
+  category: armchair
+- pattern: "\\bchair\\b"
+  category: chair
+- pattern: "\\brug\\b|\\bdoormat\\b|\\bfloor mat\\b"
+  category: rug
+- pattern: "\\bfloor lamp\\b"
+  category: floor_lamp
+- pattern: "\\btable lamp\\b"
+  category: table_lamp
+- pattern: "\\bwall art\\b|\\bposter\\b|\\bpainting\\b|\\bcanvas print\\b"
+  category: wall_art
+- pattern: "\\bpotted plant\\b|\\bplant\\b|\\borchid\\b|\\bbanana tree\\b"
+  category: plant
+- pattern: "\\bwardrobe\\b"
+  category: wardrobe
+- pattern: "\\bdresser\\b|\\bchest of drawers\\b"
+  category: dresser
+- pattern: "\\bbookshelf\\b|\\bbookcase\\b"
+  category: bookcase

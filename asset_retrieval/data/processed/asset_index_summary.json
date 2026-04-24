@@ -1,0 +1,8 @@
+{
+  "total": 14098,
+  "success": 14098,
+  "failed": 0,
+  "synset_missing": 1783,
+  "unknown_category": 5521,
+  "output_path": "/data/scenesmith/asset_retrieval/data/processed/asset_index.jsonl"
+}

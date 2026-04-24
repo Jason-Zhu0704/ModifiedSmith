@@ -1,0 +1,59 @@
+bed:
+  - headboard
+  - mattress
+  - bedding
+  - pillows
+  - bed frame
+  - storage drawers
+  - upholstered
+  - wood frame
+nightstand:
+  - drawer
+  - drawers
+  - bedside
+  - small cabinet
+  - flat top
+  - side table
+desk:
+  - work surface
+  - drawer
+  - shelving
+  - computer desk
+  - writing desk
+  - workspace
+chair:
+  - seat
+  - backrest
+  - armrests
+  - legs
+  - swivel
+  - cushioned
+rug:
+  - woven
+  - flat
+  - geometric pattern
+  - runner
+  - mat
+floor_lamp:
+  - floor lamp
+  - lampshade
+  - pole
+  - tripod
+  - base
+table_lamp:
+  - table lamp
+  - lampshade
+  - stem
+  - base
+wall_art:
+  - wall art
+  - poster
+  - painting
+  - frame
+  - canvas
+plant:
+  - potted plant
+  - leaves
+  - plant
+  - pot
+  - flowers
