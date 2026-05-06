@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2048" height="640" viewBox="0 0 2048 640">
+  <defs>
+    <style>
+      .title1{font:700 52px Arial,sans-serif;fill:#173fa8}
+      .title2{font:700 52px Arial,sans-serif;fill:#d75a0c}
+      .h{font:700 28px Arial,sans-serif}
+      .b{font:500 20px Arial,sans-serif;fill:#1a1a1a}
+      .s{font:500 16px Arial,sans-serif;fill:#222}
+    </style>
+    <marker id="arrowB" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0,0L10,5L0,10z" fill="#1e57cc"/></marker>
+    <marker id="arrowK" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0,0L10,5L0,10z" fill="#111"/></marker>
+    <marker id="arrowG" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0,0L10,5L0,10z" fill="#147a28"/></marker>
+    <marker id="arrowR" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0,0L10,5L0,10z" fill="#d91d1d"/></marker>
+  </defs>
+
+  <rect width="2048" height="640" fill="#f4f4f4"/>
+
+  <g id="stage1">
+    <rect x="12" y="15" width="910" height="565" rx="16" fill="#f8fbff" stroke="#5a8ef8" stroke-width="2"/>
+    <line x1="12" y1="66" x2="922" y2="66" stroke="#5a8ef8"/>
+    <text x="467" y="50" text-anchor="middle" class="title1">Stage 1 — Static Environment / Imitation Learning</text>
+
+    <rect x="180" y="80" width="510" height="48" rx="10" fill="#eef4ff" stroke="#5a8ef8"/>
+    <text x="435" y="114" text-anchor="middle" class="h" fill="#1a46b4">Goal-conditioned IL + Modality Dropout</text>
+
+    <g id="map1" transform="translate(48,145)">
+      <rect x="0" y="0" width="600" height="330" fill="#fefefe" stroke="#666"/>
+      <path d="M0 0h160v40H60v40h140v-40h180v20h160v50h-120v40h-140v-40h-120v80h-120v40H0z" fill="#cfd1d4"/>
+      <path d="M0 210h60v-40h140v30h100v-70h220v60h80v140H420v-40H280v40H180v-35H120v35H0z" fill="#cfd1d4"/>
+      <circle cx="65" cy="285" r="14" fill="#107c2d" stroke="#fff" stroke-width="3"/>
+      <text x="42" y="320" class="h" fill="#107c2d">Start</text>
+      <circle cx="520" cy="26" r="14" fill="#ff2b2b" stroke="#fff" stroke-width="3"/>
+      <text x="497" y="14" class="h" fill="#e21b1b">Goal</text>
+      <path d="M70 282 C150 180, 230 260, 245 155 C250 105, 340 80, 430 110 C470 120, 490 60, 520 30" fill="none" stroke="#111" stroke-width="3" stroke-dasharray="10 8"/>
+      <path d="M70 282 C150 180, 230 260, 245 155 C250 105, 340 80, 430 110 C470 120, 490 60, 520 30" fill="none" stroke="#1f66ff" stroke-width="4"/>
+    </g>
+
+    <g id="stage1-right-tools" transform="translate(675,145)">
+      <rect x="0" y="0" width="175" height="52" rx="10" fill="#edf3ff" stroke="#5a8ef8"/><text x="88" y="34" text-anchor="middle" class="h" fill="#204aaf">Lreg</text>
+      <rect x="0" y="62" width="175" height="52" rx="10" fill="#edf3ff" stroke="#5a8ef8"/><text x="88" y="96" text-anchor="middle" class="h" fill="#204aaf">Lcls</text>
+      <rect x="0" y="124" width="175" height="82" rx="10" fill="#edf3ff" stroke="#5a8ef8"/><text x="88" y="173" text-anchor="middle" class="h" fill="#204aaf">Trajectory Fitting</text>
+      <rect x="0" y="216" width="175" height="114" rx="10" fill="#edf3ff" stroke="#5a8ef8"/>
+      <text x="88" y="285" text-anchor="middle" class="h" fill="#204aaf">Aux Depth</text>
+      <text x="88" y="312" text-anchor="middle" class="b">(Geometry-aware)</text>
+    </g>
+
+    <g id="legend1" transform="translate(28,488)">
+      <rect x="0" y="0" width="872" height="80" rx="10" fill="#f9fcff" stroke="#5a8ef8"/>
+      <line x1="40" y1="24" x2="90" y2="24" stroke="#111" stroke-width="4" stroke-dasharray="10 8"/><text x="110" y="30" class="b">Expert Trajectory (Demonstration)</text>
+      <line x1="40" y1="58" x2="90" y2="58" stroke="#1f66ff" stroke-width="4"/><text x="110" y="64" class="b">Model Prediction (IL Policy)</text>
+      <rect x="470" y="28" width="28" height="28" fill="#cfd1d4" stroke="#666"/><text x="510" y="50" class="b">Wall / Obstacle</text>
+      <rect x="695" y="28" width="28" height="28" fill="#fff" stroke="#666"/><text x="738" y="50" class="b">Free Space</text>
+    </g>
+  </g>
+
+  <g id="bridge">
+    <rect x="882" y="285" width="75" height="18" fill="#d5e5ff"/>
+    <path d="M878 294h90" stroke="#1e57cc" stroke-width="4" marker-end="url(#arrowB)"/>
+    <text x="922" y="268" text-anchor="middle" class="h" fill="#1d4eb0">Fine-tune</text>
+  </g>
+
+  <g id="stage2">
+    <rect x="970" y="15" width="1066" height="565" rx="16" fill="#fffaf6" stroke="#ff8a45" stroke-width="2"/>
+    <line x1="970" y1="66" x2="2036" y2="66" stroke="#ff8a45"/>
+    <text x="1503" y="50" text-anchor="middle" class="title2">Stage 2 — Dynamic Environment / Residual Reinforcement Learning</text>
+
+    <rect x="1010" y="84" width="185" height="66" rx="12" fill="#f2f7ff" stroke="#5a8ef8"/>
+    <text x="1102" y="118" text-anchor="middle" class="h" fill="#1a46b4">Frozen</text><text x="1102" y="144" text-anchor="middle" class="h" fill="#1a46b4">IL Base</text>
+    <text x="1226" y="122" class="h">→</text><text x="1278" y="110" class="b" fill="#1f66ff">Base</text><text x="1278" y="138" class="b" fill="#1f66ff">Trajectory</text>
+    <text x="1452" y="125" class="h">+</text>
+    <rect x="1515" y="84" width="210" height="66" rx="12" fill="#fff3ea" stroke="#f07a23"/>
+    <text x="1620" y="118" text-anchor="middle" class="h" fill="#d75a0c">Residual</text><text x="1620" y="144" text-anchor="middle" class="h" fill="#d75a0c">Actor</text>
+
+    <g id="map2" transform="translate(1015,165)">
+      <rect x="0" y="0" width="620" height="300" fill="#fff" stroke="#666"/>
+      <path d="M0 0h240v30h-140v45h-30v70h-70z" fill="#cfd1d4"/>
+      <path d="M0 300h165v-20h250v20h120v-20h85v20z" fill="#cfd1d4"/>
+      <path d="M510 0h110v30h-25v55h25v85h-25v55h25v55h-110v-20h-100v20h-120v-20h-120v20H0v-35h120v-40h150v20h150v-20h90z" fill="none" stroke="#cfd1d4" stroke-width="18"/>
+      <circle cx="70" cy="220" r="12" fill="#333"/><text x="40" y="290" class="h" fill="#107c2d">Start</text>
+      <path d="M76 220 C200 90, 350 20, 500 55" fill="none" stroke="#d91d1d" stroke-width="4" stroke-dasharray="10 10" marker-end="url(#arrowR)"/>
+      <text x="510" y="60" class="h" fill="#d91d1d">✹  ✖</text>
+      <path d="M76 220 C180 160, 220 160, 280 210 C340 260, 430 250, 500 220" fill="none" stroke="#147a28" stroke-width="4" marker-end="url(#arrowG)"/>
+      <circle cx="150" cy="190" r="7" fill="#80c889" stroke="#147a28"/><circle cx="210" cy="205" r="7" fill="#80c889" stroke="#147a28"/>
+      <circle cx="270" cy="235" r="7" fill="#80c889" stroke="#147a28"/><circle cx="360" cy="242" r="7" fill="#80c889" stroke="#147a28"/>
+      <circle cx="430" cy="225" r="7" fill="#80c889" stroke="#147a28"/><circle cx="500" cy="210" r="7" fill="#80c889" stroke="#147a28"/>
+      <path d="M80 220 C130 170, 210 140, 300 135" fill="none" stroke="#111" stroke-width="4" marker-end="url(#arrowK)"/>
+      <path d="M290 135 C360 120, 430 125, 560 125" fill="none" stroke="#909090" stroke-width="4" stroke-dasharray="14 8" marker-end="url(#arrowK)"/>
+      <text x="370" y="160" class="h" fill="#333">Pedestrian</text><text x="353" y="188" class="h" fill="#333">Predicted Future</text>
+      <text x="520" y="250" class="title2" font-size="36">✓</text>
+    </g>
+
+    <g id="rewards" transform="translate(1760,165)">
+      <rect x="0" y="0" width="235" height="60" rx="10" fill="#fff" stroke="#bdbdbd"/><text x="118" y="39" text-anchor="middle" class="h">Speed Scale</text>
+      <rect x="0" y="70" width="235" height="60" rx="10" fill="#fff" stroke="#bdbdbd"/><text x="118" y="109" text-anchor="middle" class="h">Lateral Offset</text>
+      <rect x="0" y="140" width="235" height="60" rx="10" fill="#f6fff6" stroke="#bdbdbd"/><text x="118" y="177" text-anchor="middle" class="h" fill="#147a28">+ Pass-behind Shaping</text>
+      <rect x="0" y="210" width="235" height="60" rx="10" fill="#fff" stroke="#bdbdbd"/><text x="118" y="247" text-anchor="middle" class="h" fill="#d91d1d">- Collision Penalty</text>
+      <rect x="0" y="280" width="235" height="60" rx="10" fill="#f6fff6" stroke="#bdbdbd"/><text x="118" y="317" text-anchor="middle" class="h" fill="#147a28">+ Cruise (Maintain Speed)</text>
+      <rect x="0" y="350" width="235" height="60" rx="10" fill="#f6fff6" stroke="#bdbdbd"/><text x="118" y="387" text-anchor="middle" class="h" fill="#147a28">+ Recover Speed</text><text x="118" y="410" text-anchor="middle" class="h" fill="#147a28">After Passing</text>
+    </g>
+
+    <rect x="1170" y="454" width="430" height="52" rx="10" fill="#fff3ea" stroke="#ff8a45"/>
+    <text x="1385" y="475" text-anchor="middle" class="h" fill="#d75a0c">Dynamic Interaction</text>
+    <text x="1385" y="499" text-anchor="middle" class="b">Learn to pass behind moving pedestrians</text>
+
+    <g id="legend2" transform="translate(990,505)">
+      <rect x="0" y="0" width="1025" height="65" rx="10" fill="#fff" stroke="#ff8a45"/>
+      <line x1="30" y1="21" x2="72" y2="21" stroke="#147a28" stroke-width="4"/><circle cx="50" cy="21" r="5" fill="#80c889" stroke="#147a28"/><text x="90" y="28" class="b">Good (Pass-behind) Trajectory</text>
+      <line x1="30" y1="48" x2="72" y2="48" stroke="#d91d1d" stroke-width="4" stroke-dasharray="10 8"/><text x="90" y="55" class="b">Bad (Front-crossing) Trajectory</text>
+      <line x1="350" y1="35" x2="390" y2="35" stroke="#909090" stroke-width="4" stroke-dasharray="10 8" marker-end="url(#arrowK)"/><text x="405" y="42" class="b">Pedestrian Predicted Future</text>
+      <rect x="650" y="20" width="28" height="28" fill="#cfd1d4" stroke="#666"/><text x="690" y="42" class="b">Wall / Obstacle</text>
+      <rect x="860" y="20" width="28" height="28" fill="#fff" stroke="#666"/><text x="900" y="42" class="b">Free Space</text>
+    </g>
+  </g>
+
+  <text x="1024" y="622" text-anchor="middle" style="font:700 48px Arial,sans-serif;fill:#111">Figure 2. <tspan style="font-weight:500">Two-stage training paradigm of DiffusionNav.</tspan></text>
+</svg>

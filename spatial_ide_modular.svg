@@ -1,0 +1,139 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1080" viewBox="0 0 1600 1080">
+  <defs>
+    <style>
+      .title{font:700 64px 'Arial',sans-serif;fill:#111}
+      .chip{font:600 36px 'Arial',sans-serif}
+      .h1{font:700 50px 'Arial',sans-serif}
+      .h2{font:700 40px 'Arial',sans-serif}
+      .body{font:400 30px 'Arial',sans-serif}
+      .small{font:400 24px 'Arial',sans-serif}
+      .box{fill:#fff;stroke-width:3}
+    </style>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#111"/>
+    </marker>
+  </defs>
+
+  <!-- 背景 -->
+  <rect id="background" x="0" y="0" width="1600" height="1080" fill="#f6f7f9"/>
+
+  <!-- 标题与顶部标签 -->
+  <g id="header">
+    <text x="800" y="80" text-anchor="middle" class="title">Spatial-IDE Framework</text>
+    <g id="chip-break-context">
+      <rect class="box" x="300" y="110" rx="16" ry="16" width="300" height="62" stroke="#5b8def" fill="#eef4ff"/>
+      <text x="450" y="151" text-anchor="middle" class="chip" fill="#2a4fa4">Break Linear Context</text>
+    </g>
+    <g id="chip-state-externalization">
+      <rect class="box" x="650" y="110" rx="16" ry="16" width="300" height="62" stroke="#efb24a" fill="#fff7e8"/>
+      <text x="800" y="151" text-anchor="middle" class="chip" fill="#6b4708">State Externalization</text>
+    </g>
+    <g id="chip-cognitive-decoupling">
+      <rect class="box" x="1000" y="110" rx="16" ry="16" width="300" height="62" stroke="#9b79d6" fill="#f6f1ff"/>
+      <text x="1150" y="151" text-anchor="middle" class="chip" fill="#4b2c8a">Cognitive Decoupling</text>
+    </g>
+  </g>
+
+  <!-- 左侧环境模块 -->
+  <g id="module-environment">
+    <rect class="box" x="30" y="220" rx="20" ry="20" width="250" height="700" stroke="#6f5aa5" fill="#f3f0ff"/>
+    <text x="155" y="260" text-anchor="middle" class="h2" fill="#352160">WalkerBench</text>
+    <text x="155" y="305" text-anchor="middle" class="h2" fill="#352160">Environment</text>
+
+    <rect x="45" y="350" width="220" height="230" rx="18" ry="18" fill="#fff" stroke="#333" stroke-width="2"/>
+    <text x="155" y="478" text-anchor="middle" class="small" fill="#666">[当前图像占位]</text>
+
+    <rect x="45" y="595" width="220" height="180" rx="14" ry="14" fill="#fff" stroke="#c7c7c7" stroke-width="2"/>
+    <text x="155" y="630" text-anchor="middle" class="body" fill="#222">Available Moves</text>
+    <text x="65" y="675" class="body">1 front</text>
+    <text x="65" y="715" class="body">2 left</text>
+    <text x="65" y="755" class="body">3 right</text>
+
+    <rect x="45" y="800" width="220" height="105" rx="12" ry="12" fill="#fff" stroke="#b8b8b8" stroke-width="2"/>
+    <text x="155" y="840" text-anchor="middle" class="body" fill="#222">Action Executor</text>
+    <text x="155" y="880" text-anchor="middle" class="small" fill="#305ecf">MOVE / ROTATE / STOP</text>
+  </g>
+
+  <!-- 感知模块 -->
+  <g id="module-perception">
+    <rect class="box" x="390" y="190" rx="22" ry="22" width="530" height="240" stroke="#2f7ae5" fill="#eef5ff"/>
+    <text x="655" y="240" text-anchor="middle" class="h2" fill="#1b4fa5">Goal-Directed Perception</text>
+    <text x="655" y="285" text-anchor="middle" class="body" fill="#fff">
+      <tspan x="655" dy="0" fill="#fff"/>
+    </text>
+    <rect x="540" y="255" width="230" height="42" rx="12" ry="12" fill="#1f75e5"/>
+    <text x="655" y="285" text-anchor="middle" class="small" fill="#fff">single-turn VLM call</text>
+    <text x="655" y="355" text-anchor="middle" class="body" fill="#222">image + query → Semantic Note</text>
+  </g>
+
+  <!-- ETM 模块 -->
+  <g id="module-etm">
+    <rect class="box" x="350" y="500" rx="22" ry="22" width="580" height="430" stroke="#2f9b46" fill="#edf8ee"/>
+    <text x="640" y="550" text-anchor="middle" class="h2" fill="#1f6f33">Explicit Topological Memory (ETM)</text>
+
+    <rect x="375" y="575" width="250" height="180" rx="14" ry="14" fill="#fff" stroke="#87bf8f" stroke-width="2"/>
+    <text x="500" y="615" text-anchor="middle" class="body" fill="#205a2d">Nodes / Edges</text>
+    <text x="500" y="655" text-anchor="middle" class="small" fill="#444">visited + unvisited graph</text>
+
+    <rect x="640" y="575" width="265" height="180" rx="14" ry="14" fill="#fff" stroke="#87bf8f" stroke-width="2"/>
+    <text x="772" y="615" text-anchor="middle" class="body" fill="#205a2d">Observation Log</text>
+    <text x="772" y="655" text-anchor="middle" class="small" fill="#444">step-by-step records</text>
+
+    <rect x="375" y="775" width="530" height="130" rx="12" ry="12" fill="#fff" stroke="#87bf8f" stroke-width="2"/>
+    <text x="640" y="820" text-anchor="middle" class="body" fill="#205a2d">Stored State per Node + Update Rules</text>
+    <text x="640" y="860" text-anchor="middle" class="small" fill="#444">position / heading / pitch, MOVE &amp; ROTATION</text>
+  </g>
+
+  <!-- Context Builder -->
+  <g id="module-context-builder">
+    <rect class="box" x="1010" y="560" rx="18" ry="18" width="160" height="360" stroke="#3a8b8f" fill="#ecf9fa"/>
+    <text x="1090" y="610" text-anchor="middle" class="h2" font-size="34" fill="#1d6668">Context</text>
+    <text x="1090" y="652" text-anchor="middle" class="h2" font-size="34" fill="#1d6668">Builder</text>
+    <text x="1090" y="705" text-anchor="middle" class="small" fill="#2a4b4c">[TASK]</text>
+    <text x="1090" y="745" text-anchor="middle" class="small" fill="#2a4b4c">[POSITION]</text>
+    <text x="1090" y="785" text-anchor="middle" class="small" fill="#2a4b4c">[PATH]</text>
+    <text x="1090" y="825" text-anchor="middle" class="small" fill="#2a4b4c">[OBS LOG]</text>
+    <text x="1090" y="865" text-anchor="middle" class="small" fill="#2a4b4c">[IMAGES]</text>
+    <text x="1090" y="905" text-anchor="middle" class="small" fill="#2a4b4c">[MOVES]</text>
+  </g>
+
+  <!-- 推理引擎 -->
+  <g id="module-reasoning-engine">
+    <rect class="box" x="1250" y="250" rx="22" ry="22" width="320" height="670" stroke="#f07a23" fill="#fff3ea"/>
+    <text x="1410" y="300" text-anchor="middle" class="h2" fill="#d85500">Spatial Reasoning Engine</text>
+    <text x="1410" y="345" text-anchor="middle" class="h2" fill="#d85500">(Decide)</text>
+    <rect x="1320" y="360" width="180" height="42" rx="12" ry="12" fill="#f07a23"/>
+    <text x="1410" y="389" text-anchor="middle" class="small" fill="#fff">single-turn VLM call</text>
+
+    <rect x="1275" y="430" width="270" height="290" rx="12" ry="12" fill="#fff" stroke="#f0b389" stroke-width="2"/>
+    <text x="1410" y="485" text-anchor="middle" class="body" fill="#8a3500">JSON Decision</text>
+    <text x="1410" y="535" text-anchor="middle" class="small" fill="#333">THOUGHT / PERCEIVE_QUERY</text>
+    <text x="1410" y="575" text-anchor="middle" class="small" fill="#333">IMAGE_REFS / ACTION</text>
+  </g>
+
+  <!-- 历史图像模块 -->
+  <g id="module-history-images">
+    <rect class="box" x="1210" y="850" rx="20" ry="20" width="370" height="170" stroke="#7f62c6" fill="#f4efff"/>
+    <text x="1395" y="895" text-anchor="middle" class="h2" fill="#5a3f9a">Historical Images (on demand)</text>
+    <text x="1395" y="945" text-anchor="middle" class="small" fill="#444">step 0 / step 3 / step 6 / ...</text>
+  </g>
+
+  <!-- 底部注释 -->
+  <g id="footer">
+    <rect class="box" x="610" y="1000" rx="14" ry="14" width="380" height="62" stroke="#8a67d2" fill="#faf7ff"/>
+    <text x="800" y="1040" text-anchor="middle" class="body" fill="#3f2a73">No full dialogue history</text>
+  </g>
+
+  <!-- 主连线 -->
+  <g id="connectors" stroke="#111" stroke-width="4" fill="none" marker-end="url(#arrow)">
+    <line x1="280" y1="300" x2="390" y2="300"/>
+    <line x1="655" y1="430" x2="655" y2="500"/>
+    <line x1="930" y1="300" x2="1250" y2="300"/>
+    <line x1="930" y1="650" x2="1010" y2="650"/>
+    <line x1="1170" y1="650" x2="1250" y2="650"/>
+    <line x1="1410" y1="850" x2="1410" y2="720"/>
+    <line x1="1410" y1="850" x2="1410" y2="920"/>
+    <line x1="1210" y1="940" x2="150" y2="940"/>
+    <line x1="150" y1="940" x2="150" y2="920"/>
+  </g>
+</svg>
